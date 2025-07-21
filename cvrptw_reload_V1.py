@@ -173,11 +173,11 @@ def add_capacity_constraints(routing, manager, data, demand_evaluator_index):
     vehicle_capacity = data['vehicle_capacity']
     capacity = 'Capacity'
     routing.AddDimension(
-        demand_evaluator_index,
-        vehicle_capacity,
-        vehicle_capacity,
-        True,
-        capacity)
+        demand_evaluator_index,  # callback qui retourne demand(node)
+        vehicle_capacity,        # slack maximum
+        vehicle_capacity,        # capacité maximum
+        True,                    # start cumul to zero
+        capacity)                # nom de la dimension
     capacity_dimension = routing.GetDimensionOrDie(capacity)
 
     for node in [1, 2, 3, 4, 5]:
