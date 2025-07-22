@@ -1,4 +1,5 @@
 # optimizer/postprocessor.py
+from ortools.constraint_solver import pywrapcp
 from typing import Dict, Any
 
 def get_total_distance(manager: pywrapcp.RoutingIndexManager, routing: pywrapcp.RoutingModel, solution: pywrapcp.Assignment, data: Dict[str, Any]) -> float:

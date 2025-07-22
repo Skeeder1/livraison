@@ -2,28 +2,35 @@
 import pandas as pd
 import numpy as np
 from typing import Dict, Any
+import os
 
 def load_data(data_dir: str) -> Dict[str, Any]:
     """
-    Loads all required data from Parquet and NumPy files.
+    Loads all required data from JSON and NumPy files.
 
     :param data_dir: Directory containing the data files.
     :return: Dictionary with loaded data.
     """
-    colis = pd.read_parquet(f"{data_dir}/colis.parquet")
-    livreurs = pd.read_parquet(f"{data_dir}/livreurs.parquet")
-    hubs = pd.read_parquet(f"{data_dir}/hubs.parquet")
-    weights = pd.read_parquet(f"{data_dir}/weights.parquet")
-    distance_matrix = np.load(f"{data_dir}/distance_matrix.npy")
-    time_matrix = np.load(f"{data_dir}/time_matrix.npy")
+    # Validate file existence
+    for file in ['colis.json', 'livreurs.json', 'hubs.json', 'weights.json', 'distance_matrix.npy', 'time_matrix.npy']:
+        if not os.path.exists(os.path.join(data_dir, file)):
+            raise FileNotFoundError(f"Missing file: {file} in {data_dir}")
 
+    colis = pd.read_json(f"{data_dir}/colis.json", orient='records')
+    livreurs = pd.read_json(f"{data_dir}/livreurs.json", orient='records')
+    hubs = pd.read_json(f"{data_dir}/hubs.json", orient='records')
+    weights = pd.read_json(f"{data_dir}/weights.json", orient='records')
+
+    # Convert weights to dictionary
+    if not {'criterion', 'weight'}.issubset(weights.columns):
+        raise ValueError("weights.json must contain 'criterion' and 'weight' columns")
     data = {
         'colis': colis,
         'livreurs': livreurs,
         'hubs': hubs,
-        'weights': weights.iloc[0].to_dict(),  # Assume single row for weights
-        'distance_matrix': distance_matrix,
-        'time_matrix': time_matrix,
+        'weights': dict(zip(weights['criterion'], weights['weight'])),
+        'distance_matrix': np.load(f"{data_dir}/distance_matrix.npy"),
+        'time_matrix': np.load(f"{data_dir}/time_matrix.npy"),
         'depot': 0
     }
 

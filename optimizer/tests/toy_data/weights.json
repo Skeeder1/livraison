@@ -1,0 +1,1 @@
+[{"criterion":"distance","weight":1.0},{"criterion":"tardiness","weight":0.8},{"criterion":"hubs","weight":0.6},{"criterion":"imbalance","weight":0.4},{"criterion":"waiting","weight":0.2}]

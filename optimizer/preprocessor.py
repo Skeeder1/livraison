@@ -1,7 +1,7 @@
 # optimizer/preprocessor.py
 from typing import Dict, Any
-from .solver import solve_vrp, get_total_distance
-
+from .solver import solve_vrp
+from .postprocessor import get_total_distance
 def preprocess(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Pre-processes data: filters hubs (keep all for now), computes baseline VRP without hubs.
@@ -21,7 +21,7 @@ def preprocess(data: Dict[str, Any]) -> Dict[str, Any]:
     data_no_hubs['distance_matrix'] = data_no_hubs['distance_matrix'][:n, :n]
     data_no_hubs['time_matrix'] = data_no_hubs['time_matrix'][:n, :n]
     data_no_hubs['locations'] = data_no_hubs['locations'][:n]
-
+    print(f"Computing baseline VRP without hubs for {data_no_hubs['num_nodes']} nodes")
     manager, routing, solution = solve_vrp(data_no_hubs)
     if solution is None:
         raise ValueError("No baseline solution found")
