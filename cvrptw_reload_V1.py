@@ -293,57 +293,16 @@ def restrict_vehicle_assignments(routing, manager, data):
 # Printer (inchangé)
 ###########
 def print_solution(data, manager, routing, assignment):
-    """Affiche la solution sur la console."""
+    # quel que chose de minimaliste pour afficher la solution
     print(f'Objective: {assignment.ObjectiveValue()}')
-    total_distance = 0
-    total_load = 0
-    total_time = 0
-    capacity_dimension = routing.GetDimensionOrDie('Capacity')
-    time_dimension = routing.GetDimensionOrDie('Time')
-    dropped = []
-    for order in range(6, routing.nodes()):
-        node = manager.IndexToNode(order)
-        if assignment.Value(routing.NextVar(order)) == order:
-            dropped.append(node)
-    print(f'dropped orders: {dropped}')
-    for reload in range(1, 6):
-        node = manager.IndexToNode(reload)
-        if assignment.Value(routing.NextVar(reload)) == reload:
-            dropped.append(node)
-    print(f'dropped reload stations: {dropped}')
-    num_real = data['num_vehicles'] - 1
-    for vehicle_id in range(num_real):
+    for vehicle_id in range(data['num_vehicles']):
         index = routing.Start(vehicle_id)
         plan_output = f'Route for vehicle {vehicle_id}:\n'
-        distance = 0
         while not routing.IsEnd(index):
-            load_var = capacity_dimension.CumulVar(index)
-            time_var = time_dimension.CumulVar(index)
-            plan_output += (
-                f' {manager.IndexToNode(index)} '
-                f'Load({assignment.Min(load_var)}) '
-                f'Time({assignment.Min(time_var)},{assignment.Max(time_var)}) ->'
-            )
-            previous_index = index
+            plan_output += f' {manager.IndexToNode(index)} ->'
             index = assignment.Value(routing.NextVar(index))
-            distance += routing.GetArcCostForVehicle(previous_index, index, vehicle_id)
-        load_var = capacity_dimension.CumulVar(index)
-        time_var = time_dimension.CumulVar(index)
-        plan_output += (
-            f' {manager.IndexToNode(index)} '
-            f'Load({assignment.Min(load_var)}) '
-            f'Time({assignment.Min(time_var)},{assignment.Max(time_var)})\n'
-        )
-        plan_output += f'Distance of the route: {distance}m\n'
-        plan_output += f'Load of the route: {assignment.Min(load_var)}\n'
-        plan_output += f'Time of the route: {assignment.Min(time_var)}min\n'
+        plan_output += f' {manager.IndexToNode(index)}\n'
         print(plan_output)
-        total_distance += distance
-        total_load += assignment.Min(load_var)
-        total_time += assignment.Min(time_var)
-    print(f'Total Distance of all routes: {total_distance}m')
-    print(f'Total Load of all routes: {total_load}')
-    print(f'Total Time of all routes: {total_time}min')
 
 ########
 # Main #

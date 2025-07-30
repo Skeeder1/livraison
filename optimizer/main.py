@@ -4,6 +4,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import os
+# optimizer/solver.py
+import logging
+
+# Configure Python logging to console
+logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(message)s', handlers=[logging.StreamHandler()])
+
 from optimizer.data_loader import load_data
 from optimizer.preprocessor import preprocess
 from optimizer.solver import solve_vrp
