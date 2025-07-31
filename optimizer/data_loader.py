@@ -31,13 +31,14 @@ def load_data(data_dir: str) -> Dict[str, Any]:
         'weights': dict(zip(weights['criterion'], weights['weight'])),
         'distance_matrix': np.load(f"{data_dir}/distance_matrix.npy"),
         'time_matrix': np.load(f"{data_dir}/time_matrix.npy"),
-        'depot': 0
+        'depot': 0,  # Assuming depot is always node 1
     }
 
     # Locations: depot + customers + hubs
     locations = [(0.0, 0.0)]  # Depot at (0,0) assume
     locations.extend(colis['position'].tolist())
-    locations.extend(hubs['position'].tolist())
+    if len(hubs) > 0:
+        locations.extend(hubs['position'].tolist())
     data['locations'] = locations
 
     # Node indices: 0: depot, 1 to num_customers: customers, num_customers+1 to end: hubs

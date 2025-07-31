@@ -11,7 +11,7 @@ def solve_vrp(data):
     # Set additional parameters
     data['time_per_demand_unit'] = 5  # Time per unit demand
     data['vehicle_max_distance'] = 100000  # Large value for max distance
-    data['vehicle_max_time'] = 1440  # Full day in minutes
+    data['vehicle_max_time'] = 1440000  # Full day in minutes
 
     # Identify reload group for depot and unload depots
     reload_group = [data['depot']]
@@ -197,7 +197,7 @@ def solve_vrp(data):
         routing.AddToAssignment(time_dimension.SlackVar(index))
 
     # Set vehicle start and end times
-    penalty_slack = 1000000000
+    penalty_slack = 100
     for vehicle_id in range(num_real_vehicles):
         index = routing.Start(vehicle_id)
         time_dimension.CumulVar(index).SetValue(int(data['start_times'][vehicle_id]))  # Ensure integer
@@ -213,7 +213,6 @@ def solve_vrp(data):
         index = routing.Start(vehicle_id)
         time_dimension.CumulVar(index).SetRange(0, data['vehicle_max_time'])
         routing.AddToAssignment(time_dimension.SlackVar(index))
-
         end_index = routing.End(vehicle_id)
         time_dimension.CumulVar(end_index).SetValue(data['vehicle_max_time'])
 
@@ -258,7 +257,7 @@ def solve_vrp(data):
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
     search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-    search_parameters.time_limit.FromSeconds(200)
+    search_parameters.time_limit.FromSeconds(30)
 
     # Solve
     solution = routing.SolveWithParameters(search_parameters)

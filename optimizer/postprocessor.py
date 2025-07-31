@@ -2,8 +2,8 @@
 from ortools.constraint_solver import pywrapcp
 from typing import Dict, Any
 
-def get_total_distance(manager: pywrapcp.RoutingIndexManager, routing: pywrapcp.RoutingModel, solution: pywrapcp.Assignment, data: Dict[str, Any]) -> float:
-    """
+def get_total_distance(manager, routing, solution, data):
+    """    
     Computes total distance from solution.
 
     :param manager: Routing manager.
@@ -13,14 +13,14 @@ def get_total_distance(manager: pywrapcp.RoutingIndexManager, routing: pywrapcp.
     :return: Total distance.
     """
     total_distance = 0
-    for v in range(data['num_vehicles']):
-        index = routing.Start(v)
+    for vehicle_id in range(data['num_vehicles']):
+        index = routing.Start(vehicle_id)
         while not routing.IsEnd(index):
-            from_node = manager.IndexToNode(index)
-            to_index = solution.Value(routing.NextVar(index))
-            to_node = manager.IndexToNode(to_index)
-            total_distance += data['distance_matrix'][from_node][to_node]
-            index = to_index
+            # from_node = manager.IndexToNode(index)  # Optional: can comment out if not needed elsewhere
+            next_index = solution.Value(routing.NextVar(index))
+            # to_node = manager.IndexToNode(next_index)  # Optional: can comment out if not needed elsewhere
+            total_distance += routing.GetArcCostForVehicle(index, next_index, vehicle_id)  # Modified line to use arc cost
+            index = next_index
     return total_distance
 
 def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, routing: pywrapcp.RoutingModel, solution: pywrapcp.Assignment) -> Dict[str, Any]:
