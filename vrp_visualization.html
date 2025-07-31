@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <style>
+    #info-panel { position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; z-index: 1000; }
+    #controls { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; z-index: 1000; }
+    #legend { position: absolute; bottom: 10px; left: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; z-index: 1000; }
+    .spinner { border: 4px solid rgba(0,0,0,0.1); border-left-color: #7983ff; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; position: absolute; top: -30px; left: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .progress { height: 5px; background: green; }
+    </style>
+    
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_d315975539891bd1d3c55d6128e97b48 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+    <script src="https://cdn.jsdelivr.net/gh/python-visualization/folium@main/folium/templates/leaflet_heat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-minimap/3.6.1/Control.MiniMap.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-minimap/3.6.1/Control.MiniMap.css"/>
+</head>
+<body>
+    
+    
+    <div id="info-panel">
+        <h3>Stats</h3>
+        <p>Total Distance: <span id="total-distance"></span> (Baseline: 36.00)</p>
+        <p>Elapsed Time: <span id="elapsed-time"></span></p>
+        <p>Colis Delivered: <span id="delivered"></span></p>
+        <p>Total Delay: <span id="delay"></span></p>
+        <p>Hub Transfers: <span id="transfers"></span></p>
+        <p>Avg Capacity: <span id="avg-capacity"></span></p>
+    </div>
+    <div id="controls">
+        <input type="range" min="0" max="381" value="0" step="1" id="time-slider" aria-label="Time Slider">
+        <button id="play" aria-label="Play">Play</button>
+        <button id="pause" aria-label="Pause">Pause</button>
+        <button id="replay" aria-label="Replay">Replay</button>
+        <select id="speed" aria-label="Speed">
+            <option value="1">x1</option>
+            <option value="2">x2</option>
+            <option value="5">x5</option>
+        </select>
+        <button id="export" aria-label="Export">Export PNG</button>
+    </div>
+    <div id="legend">
+        <h3>Legend</h3>
+        <ul>
+            <li>Depot: Red Star</li>
+            <li>Customers: House tinted by livreur</li>
+            <li>Hubs: Green Circle</li>
+            <li>Livreurs: Colored Bike</li>
+        </ul>
+    </div>
+    
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>
+    var map = map_d315975539891bd1d3c55d6128e97b48;
+    var jsData = {"results": {"per_livreur": {"routes": [[0, 22, 25, 10, 8, 3, 21, 1, 23, 15, 4, 19, 9, 16, 24, 20, 0], [0, 13, 18, 12, 6, 7, 2, 14, 5, 17, 11, 0]], "estimated_times": [[0, 27, 67, 87, 101, 141, 152, 183, 197, 210, 221, 244, 253, 275, 326, 349, 381], [0, 54, 74, 95, 107, 118, 138, 149, 171, 199, 241, 274]], "remaining_charges": [[20, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5], [20, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10]], "slacks": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]}, "indicators": {"total_distance": 36, "total_tardiness_minutes": 0, "activated_hubs": 0, "load_repartition": [15, 10], "calc_time": 0}, "transfers": []}, "locations": [[0.0, 0.0], [5.5445258781, 7.5451501182000005], [7.7074864383, 2.2707009856], [8.2362306679, 7.7992425791], [3.6020785161999997, 6.2280144788], [8.3427450995, 0.1441618878], [6.6228939515, 3.3675756785], [7.1278030851, 3.7137220041], [5.838294632, 5.2224316874], [1.9283342162000001, 7.5864059114], [5.6327871927, 4.2618283550000005], [2.508034554, 1.3939292067], [6.1142169534, 3.9117302022000002], [2.9144319405, 4.6032237283], [8.2500207723, 1.9315111698], [3.8943942329, 6.7893225496], [0.9644193232, 9.0015823412], [5.9965039332, 0.0238934575], [4.4557688698, 4.1937874799], [1.9486452372, 7.1113008732], [0.8064348614, 2.626721472], [8.0761882826, 8.4389913866], [2.2547009027, 1.5574895385], [4.7503697481, 6.9831211891], [0.25196099250000004, 4.3757553942000005], [5.6053963904, 2.7021879078], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]], "time_windows": [[0, 1440], [13, 76005], [16, 191166], [2, 3392], [37, 24183], [37, 97237], [11, 21993], [9, 165218], [12, 120661], [11, 161231], [7, 151444], [21, 164193], [35, 154378], [48, 40414], [7, 66591], [41, 193975], [27, 63619], [10, 114429], [3, 196897], [22, 179136], [42, 172683], [42, 33981], [6, 160472], [3, 36246], [23, 158322], [10, 24759], [0, 1440000], [0, 1440000], [0, 1440000], [0, 1440000], [0, 1440000]], "demands": [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -20, -20, -20, -20, -20], "vehicle_capacities": [20, 20], "max_time": 381, "colors": ["#1f77b4", "#17becf"], "num_vehicles": 2, "depot": 0, "transfers": [], "num_customers": 25, "time_per_demand_unit": 5, "baseline_distance": 36, "customer_to_livreur": {"22": 0, "25": 0, "10": 0, "8": 0, "3": 0, "21": 0, "1": 0, "23": 0, "15": 0, "4": 0, "19": 0, "9": 0, "16": 0, "24": 0, "20": 0, "13": 1, "18": 1, "12": 1, "6": 1, "7": 1, "2": 1, "14": 1, "5": 1, "17": 1, "11": 1}, "customer_arrival": {"22": 27, "25": 67, "10": 87, "8": 101, "3": 141, "21": 152, "1": 183, "23": 197, "15": 210, "4": 221, "19": 244, "9": 253, "16": 275, "24": 326, "20": 349, "13": 54, "18": 74, "12": 95, "6": 107, "7": 118, "2": 138, "14": 149, "5": 171, "17": 199, "11": 241}};
+    var vehicleMarkers = [];
+    var spinnerMarkers = [];
+    var transferMarkers = [];
+    var customerMarkers = [];
+    for (var c = 1; c <= jsData.num_customers; c++) {
+        var livreur = jsData.customer_to_livreur[c] || 0;
+        var color = jsData.colors[livreur];
+        var loc = jsData.locations[c];
+        var demand = jsData.demands[c];
+        var tw = jsData.time_windows[c];
+        var iconHtml = '<i class="fa fa-home" style="color:' + color + '; font-size:24px;"></i>';
+        var icon = L.divIcon({html: iconHtml});
+        var marker = L.marker(loc, {icon: icon});
+        marker.bindPopup('Customer ' + c + '<br>Demand: ' + demand + '<br>TW: ' + tw[0] + '-' + tw[1]);
+        marker.addTo(map);
+        customerMarkers.push(marker);
+    }
+    jsData.results.transfers.forEach(function(tr, idx) {
+        var icon = L.divIcon({html: '<div style="background: yellow; padding: 2px;">P</div>', iconSize: [20,20]});
+        var marker = L.marker(jsData.locations[tr.hub], {icon: icon, opacity: 0});
+        marker.addTo(map);
+        transferMarkers.push(marker);
+    });
+    for (var v = 0; v < jsData.num_vehicles; v++) {
+        var cap = jsData.vehicle_capacities[v];
+        var iconHtml = '<div style="position: relative;"><div style="position: absolute; top: -40px; left: 0; background: white; padding: 2px; border: 1px solid; width: 100px;">Charge: <span class="charge-text">0/' + cap + '</span><div class="progress" style="width: 100%;"></div></div><i class="fas fa-bicycle" style="color:' + jsData.colors[v] + '; font-size:24px;"></i></div>';
+        var icon = L.divIcon({html: iconHtml, iconSize: [30,30]});
+        var marker = L.marker(jsData.locations[jsData.results.per_livreur.routes[v][0]], {icon: icon});
+        marker.addTo(map);
+        vehicleMarkers.push(marker);
+        var spinner = L.divIcon({html: '<div class="spinner"></div>', iconSize: [24,24]});
+        var spinnerMarker = L.marker([0,0], {icon: spinner, opacity: 0});
+        spinnerMarker.addTo(map);
+        spinnerMarkers.push(spinnerMarker);
+    }
+    function updateAtTime(t) {
+        var delivered = 0;
+        var total_delay = 0;
+        var transfers_done = 0;
+        var total_load = 0;
+        var total_cap = 0;
+        jsData.results.transfers.forEach(function(tr, idx) {
+            if (t >= tr.pickup_t) {
+                transfers_done++;
+            }
+            var opacity = (t >= tr.deposit_t && t < tr.pickup_t) ? 1 : 0;
+            transferMarkers[idx].setOpacity(opacity);
+        });
+        for (var c = 1; c <= jsData.num_customers; c++) {
+            var arrival = jsData.customer_arrival[c] || Infinity;
+            var marker = customerMarkers[c-1];
+            var color = (t >= arrival) ? 'gray' : jsData.colors[jsData.customer_to_livreur[c] || 0];
+            var html = marker.getIcon().options.html.replace(/color:[^;]+/, 'color:' + color);
+            marker.setIcon(L.divIcon({html: html}));
+            if (t >= arrival) {
+                delivered++;
+                var tw_end = jsData.time_windows[c][1];
+                total_delay += Math.max(0, arrival - tw_end);
+            }
+        }
+        for (var v = 0; v < jsData.num_vehicles; v++) {
+            var route = jsData.results.per_livreur.routes[v];
+            var times = jsData.results.per_livreur.estimated_times[v];
+            var remainings = jsData.results.per_livreur.remaining_charges[v];
+            var slacks = jsData.results.per_livreur.slacks[v];
+            var i = 0;
+            for (; i < times.length - 1; i++) {
+                if (t < times[i + 1]) break;
+            }
+            if (t >= times[times.length - 1]) i = times.length - 2;
+            var from = route[i];
+            var to = route[i + 1];
+            var time_from = times[i];
+            var time_to = times[i + 1];
+            var slack = slacks[i];
+            var service = Math.abs(jsData.demands[from]) * jsData.time_per_demand_unit;
+            var depart_time = time_from + service + slack;
+            var travel = time_to - depart_time;
+            var loc_from = jsData.locations[from];
+            var loc_to = jsData.locations[to];
+            var is_on_road = t >= depart_time;
+            var lat, lng;
+            var remaining;
+            if (is_on_road) {
+                var fraction = (t - depart_time) / travel;
+                fraction = Math.min(1, Math.max(0, fraction));
+                lat = loc_from[0] + fraction * (loc_to[0] - loc_from[0]);
+                lng = loc_from[1] + fraction * (loc_to[1] - loc_from[1]);
+                remaining = remainings[i + 1];
+                spinnerMarkers[v].setOpacity(0);
+            } else {
+                lat = loc_from[0];
+                lng = loc_from[1];
+                remaining = remainings[i];
+                var show_spinner = t > time_from && t < depart_time;
+                spinnerMarkers[v].setLatLng([lat, lng]);
+                spinnerMarkers[v].setOpacity(show_spinner ? 1 : 0);
+            }
+            vehicleMarkers[v].setLatLng([lat, lng]);
+            var html = vehicleMarkers[v].getIcon().options.html;
+            html = html.replace(/Charge: [^<]+/, 'Charge: ' + remaining + '/' + jsData.vehicle_capacities[v]);
+            var progress_width = (remaining / jsData.vehicle_capacities[v] * 100);
+            var progress_color = progress_width > 50 ? 'green' : 'red';
+            html = html.replace(/background: [^;]+; width: [^;]+;/, 'background: ' + progress_color + '; width: ' + progress_width + '%;');
+            vehicleMarkers[v].setIcon(L.divIcon({html: html, iconSize: [30,30]}));
+            var load = jsData.vehicle_capacities[v] - remaining;
+            total_load += load;
+            total_cap += jsData.vehicle_capacities[v];
+        }
+        document.getElementById('total-distance').innerText = jsData.results.indicators.total_distance.toFixed(2);
+        document.getElementById('elapsed-time').innerText = t;
+        document.getElementById('delivered').innerText = delivered;
+        document.getElementById('delay').innerText = total_delay.toFixed(2);
+        document.getElementById('transfers').innerText = transfers_done;
+        document.getElementById('avg-capacity').innerText = (total_load / total_cap * 100).toFixed(2) + '%';
+    }
+    var slider = document.getElementById('time-slider');
+    slider.addEventListener('input', function() { updateAtTime(parseInt(this.value)); });
+    var timer = null;
+    var speed = 1;
+    document.getElementById('play').addEventListener('click', function() {
+        clearInterval(timer);
+        timer = setInterval(function() {
+            var val = parseInt(slider.value) + speed;
+            if (val > jsData.max_time) {
+                clearInterval(timer);
+                return;
+            }
+            slider.value = val;
+            updateAtTime(val);
+        }, 50);
+    });
+    document.getElementById('pause').addEventListener('click', function() { clearInterval(timer); });
+    document.getElementById('replay').addEventListener('click', function() {
+        clearInterval(timer);
+        slider.value = 0;
+        updateAtTime(0);
+    });
+    document.getElementById('speed').addEventListener('change', function() { speed = parseInt(this.value); });
+    document.getElementById('export').addEventListener('click', function() {
+        html2canvas(document.querySelector('#map_d315975539891bd1d3c55d6128e97b48')).then(canvas => {
+            var link = document.createElement('a');
+            link.download = 'vrp_visualization.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+    });
+    updateAtTime(0);
+    </script>
+    
+    
+            <div class="folium-map" id="map_d315975539891bd1d3c55d6128e97b48" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_d315975539891bd1d3c55d6128e97b48 = L.map(
+                "map_d315975539891bd1d3c55d6128e97b48",
+                {
+                    center: [0.0, 0.0],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 12,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_aa32410ad089709795740813e75fd1e2 = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_aa32410ad089709795740813e75fd1e2.addTo(map_d315975539891bd1d3c55d6128e97b48);
+        
+    
+            var feature_group_e2b526a1aec665c06dfe1d5bec6af237 = L.featureGroup(
+                {
+}
+            );
+        
+    
+            var poly_line_12657ce8e61df5a6243c1a62cf720775 = L.polyline(
+                [[0.0, 0.0], [2.2547009027, 1.5574895385], [5.6053963904, 2.7021879078], [5.6327871927, 4.2618283550000005], [5.838294632, 5.2224316874], [8.2362306679, 7.7992425791], [8.0761882826, 8.4389913866], [5.5445258781, 7.5451501182000005], [4.7503697481, 6.9831211891], [3.8943942329, 6.7893225496], [3.6020785161999997, 6.2280144788], [1.9486452372, 7.1113008732], [1.9283342162000001, 7.5864059114], [0.9644193232, 9.0015823412], [0.25196099250000004, 4.3757553942000005], [0.8064348614, 2.626721472], [0.0, 0.0]],
+                {"bubblingMouseEvents": true, "color": "#1f77b4", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#1f77b4", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.7, "smoothFactor": 1.0, "stroke": true, "weight": 3.5294117647058822}
+            ).addTo(feature_group_e2b526a1aec665c06dfe1d5bec6af237);
+        
+    
+            feature_group_e2b526a1aec665c06dfe1d5bec6af237.addTo(map_d315975539891bd1d3c55d6128e97b48);
+        
+    
+            var feature_group_1fbd9e62d3149a2fd50b2c5c7e36bf4a = L.featureGroup(
+                {
+}
+            );
+        
+    
+            var poly_line_e56e5a1a4e5426289247827f44b48e19 = L.polyline(
+                [[0.0, 0.0], [2.9144319405, 4.6032237283], [4.4557688698, 4.1937874799], [6.1142169534, 3.9117302022000002], [6.6228939515, 3.3675756785], [7.1278030851, 3.7137220041], [7.7074864383, 2.2707009856], [8.2500207723, 1.9315111698], [8.3427450995, 0.1441618878], [5.9965039332, 0.0238934575], [2.508034554, 1.3939292067], [0.0, 0.0]],
+                {"bubblingMouseEvents": true, "color": "#17becf", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#17becf", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.7, "smoothFactor": 1.0, "stroke": true, "weight": 2.2916666666666665}
+            ).addTo(feature_group_1fbd9e62d3149a2fd50b2c5c7e36bf4a);
+        
+    
+            feature_group_1fbd9e62d3149a2fd50b2c5c7e36bf4a.addTo(map_d315975539891bd1d3c55d6128e97b48);
+        
+    
+            var feature_group_d6c8da6c9d809f5477b6a4c461317d61 = L.featureGroup(
+                {
+}
+            );
+        
+    
+            feature_group_d6c8da6c9d809f5477b6a4c461317d61.addTo(map_d315975539891bd1d3c55d6128e97b48);
+        
+    
+            var feature_group_965ee124c436ddb79c0bef15f1ea5d5a = L.featureGroup(
+                {
+}
+            );
+        
+    
+            var marker_95fcaf9103f0d99ae3f6335ed4623727 = L.marker(
+                [0.0, 0.0],
+                {
+}
+            ).addTo(feature_group_965ee124c436ddb79c0bef15f1ea5d5a);
+        
+    
+            var icon_d687b221b8f849cf4b9d005f53dfb8b3 = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "red",
+  "iconColor": "white",
+  "icon": "star",
+  "prefix": "fa",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_fe530ef9c82d0dbe2a6863bb6a91573b = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_68d022c10d92e3e7172018c9c426b39d = $(`<div id="html_68d022c10d92e3e7172018c9c426b39d" style="width: 100.0%; height: 100.0%;">Depot</div>`)[0];
+                popup_fe530ef9c82d0dbe2a6863bb6a91573b.setContent(html_68d022c10d92e3e7172018c9c426b39d);
+            
+        
+
+        marker_95fcaf9103f0d99ae3f6335ed4623727.bindPopup(popup_fe530ef9c82d0dbe2a6863bb6a91573b)
+        ;
+
+        
+    
+    
+            marker_95fcaf9103f0d99ae3f6335ed4623727.bindTooltip(
+                `<div>
+                     Depot
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_95fcaf9103f0d99ae3f6335ed4623727.setIcon(icon_d687b221b8f849cf4b9d005f53dfb8b3);
+            
+    
+            feature_group_965ee124c436ddb79c0bef15f1ea5d5a.addTo(map_d315975539891bd1d3c55d6128e97b48);
+        
+    
+            var feature_group_37f28f0cc9e5cb5d5821404b52633fa9 = L.featureGroup(
+                {
+}
+            );
+        
+    
+            var heat_map_acc2b2f8d7ff3642f7b610e7cbd255f1 = L.heatLayer(
+                [[5.5445258781, 7.5451501182000005, 5.0], [7.7074864383, 2.2707009856, 5.0], [8.2362306679, 7.7992425791, 5.0], [3.6020785161999997, 6.2280144788, 5.0], [8.3427450995, 0.1441618878, 5.0], [6.6228939515, 3.3675756785, 5.0], [7.1278030851, 3.7137220041, 5.0], [5.838294632, 5.2224316874, 5.0], [1.9283342162000001, 7.5864059114, 5.0], [5.6327871927, 4.2618283550000005, 5.0], [2.508034554, 1.3939292067, 5.0], [6.1142169534, 3.9117302022000002, 5.0], [2.9144319405, 4.6032237283, 5.0], [8.2500207723, 1.9315111698, 5.0], [3.8943942329, 6.7893225496, 5.0], [0.9644193232, 9.0015823412, 5.0], [5.9965039332, 0.0238934575, 5.0], [4.4557688698, 4.1937874799, 5.0], [1.9486452372, 7.1113008732, 5.0], [0.8064348614, 2.626721472, 5.0], [8.0761882826, 8.4389913866, 5.0], [2.2547009027, 1.5574895385, 5.0], [4.7503697481, 6.9831211891, 5.0], [0.25196099250000004, 4.3757553942000005, 5.0], [5.6053963904, 2.7021879078, 5.0]],
+                {
+  "minOpacity": 0.5,
+  "maxZoom": 18,
+  "radius": 25,
+  "blur": 15,
+}
+            );
+        
+    
+            heat_map_acc2b2f8d7ff3642f7b610e7cbd255f1.addTo(feature_group_37f28f0cc9e5cb5d5821404b52633fa9);
+        
+    
+            var tile_layer_dfbffe077b3a8fdb3c35be12a6ce43d4 = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {"attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors", "detect_retina": false, "max_native_zoom": 19, "max_zoom": 19, "min_zoom": 0, "no_wrap": false, "opacity": 1, "subdomains": "abc", "tms": false}
+            );
+            var mini_map_86d401b1c99d3b5ab934e6c4d3c4d526 = new L.Control.MiniMap(
+                tile_layer_dfbffe077b3a8fdb3c35be12a6ce43d4,
+                {
+  "position": "bottomright",
+  "width": 150,
+  "height": 150,
+  "collapsedWidth": 25,
+  "collapsedHeight": 25,
+  "zoomLevelOffset": -5,
+  "centerFixed": false,
+  "zoomAnimation": false,
+  "toggleDisplay": false,
+  "autoToggleDisplay": false,
+  "minimized": false,
+}
+            );
+            map_d315975539891bd1d3c55d6128e97b48.addControl(mini_map_86d401b1c99d3b5ab934e6c4d3c4d526);
+        
+    
+            var layer_control_71003224ae211f370083b60a617b1ea7_layers = {
+                base_layers : {
+                    "openstreetmap" : tile_layer_aa32410ad089709795740813e75fd1e2,
+                },
+                overlays :  {
+                    "Route 1" : feature_group_e2b526a1aec665c06dfe1d5bec6af237,
+                    "Route 2" : feature_group_1fbd9e62d3149a2fd50b2c5c7e36bf4a,
+                    "Hubs" : feature_group_d6c8da6c9d809f5477b6a4c461317d61,
+                    "Depot" : feature_group_965ee124c436ddb79c0bef15f1ea5d5a,
+                    "Activity Heatmap" : feature_group_37f28f0cc9e5cb5d5821404b52633fa9,
+                },
+            };
+            let layer_control_71003224ae211f370083b60a617b1ea7 = L.control.layers(
+                layer_control_71003224ae211f370083b60a617b1ea7_layers.base_layers,
+                layer_control_71003224ae211f370083b60a617b1ea7_layers.overlays,
+                {
+  "position": "topright",
+  "collapsed": true,
+  "autoZIndex": true,
+}
+            ).addTo(map_d315975539891bd1d3c55d6128e97b48);
+
+        
+</script>
+</html>

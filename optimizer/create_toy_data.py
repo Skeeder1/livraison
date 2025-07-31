@@ -27,7 +27,7 @@ END_TIME_MIN: int = 300000  # Min end time for shifts
 END_TIME_MAX: int = 300000  # Max end time
 
 # Hubs
-NUM_HUBS: int = 0  # Number of hubs
+NUM_HUBS: int = 1  # Number of hubs
 HUB_LOAD_LIMIT: float = 5.0  # Load limit per hub (None for no limit)
 
 NUM_VEHICLES: int = 2  # Number of vehicles

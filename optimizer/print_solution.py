@@ -38,7 +38,7 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     for d in data['dummy_nodes']:
         base_node.append(data['depot'])
 
-    # Assign customers to livreurs
+    # Assign customers to livreurs and get arrival times
     customer_to_livreur = {}
     customer_arrival = {}
     for v in range(data['num_vehicles']):
@@ -96,7 +96,7 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     # Max time
     max_time = max(max(times) for times in results['per_livreur']['estimated_times'] if times)
 
-    # Heatmap data (but we'll make it optional and off by default)
+    # Heatmap data
     time_spent = np.zeros(len(data['locations']))
     for v in range(data['num_vehicles']):
         route = results['per_livreur']['routes'][v]
@@ -116,49 +116,34 @@ def create_visualization(data, manager, routing, solution, results, output_file=
 
     # Route groups
     for v in range(data['num_vehicles']):
-        group = folium.FeatureGroup(name=f'Route {v+1}', show=True)
+        group = folium.FeatureGroup(name=f'Route {v+1}')
         route = results['per_livreur']['routes'][v]
         route_locs = [data['locations'][node] for node in route]
-        # Thickness scaled by average load
-        avg_load = np.mean([data['vehicle_capacities'][v] - r for r in results['per_livreur']['remaining_charges'][v]])
-        weight = 3 + (avg_load / max(data['vehicle_capacities'])) * 5 if data['vehicle_capacities'] else 5
-        folium.PolyLine(route_locs, color=colors_hex[v], weight=weight, opacity=0.7).add_to(group)
+        folium.PolyLine(route_locs, color=colors_hex[v], weight=5, opacity=0.7).add_to(group)
         group.add_to(m)
 
-    # Customer markers with color by livreur and size by volume
-    customers_group = folium.FeatureGroup(name='Customers', show=True)
-    max_demand = max(data['demands'][1:1+data['num_customers']]) if data['num_customers'] > 0 else 1
+    # Markers
+    customers_group = folium.FeatureGroup(name='Customers')
     for i in range(1, 1 + data['num_customers']):
         loc = data['locations'][i]
         demand = data['demands'][i]
         tw = data['time_windows'][i]
-        livreur = customer_to_livreur.get(i, -1)
-        color = colors_hex[livreur] if livreur != -1 else '#0000ff'
-        size = 20 + (demand / max_demand) * 20
-        arrival = customer_arrival.get(i, 'N/A')
-        icon_html = f'<i class="fa fa-home" style="color:{color}; font-size:{size}px;"></i>'
-        icon = folium.DivIcon(html=icon_html)
-        popup = f'Customer {i}<br>Demand: {demand}<br>TW: {tw[0]}-{tw[1]}<br>Arrival: {arrival}'
-        folium.Marker(loc, icon=icon, popup=popup, tooltip=f'Customer {i}').add_to(customers_group)
+        folium.Marker(loc, icon=folium.Icon(icon='home', prefix='fa', color='blue'), popup=f'Customer {i}<br>Demand: {demand}<br>TW: {tw[0]}-{tw[1]}', tooltip=f'Customer {i}').add_to(customers_group)
     customers_group.add_to(m)
 
-    # Hub markers with arrows and pulsing
-    hubs_group = folium.FeatureGroup(name='Hubs', show=True)
+    hubs_group = folium.FeatureGroup(name='Hubs')
     for i in range(data['num_hubs']):
         h = hub_start + i
         loc = data['locations'][h]
-        icon_html = '<div style="position: relative;"><i class="fa fa-circle" style="color:green; font-size:20px;"></i><i class="fa fa-arrows-alt" style="position:absolute; top:0; left:0; color:white; font-size:10px;"></i></div>'
-        icon = folium.DivIcon(html=icon_html)
-        folium.Marker(loc, icon=icon, popup=f'Hub {i+1}', tooltip=f'Hub {i+1}').add_to(hubs_group)
+        folium.CircleMarker(loc, radius=10, color='green', fill=True, fill_color='green', popup=f'Hub {i+1}', tooltip=f'Hub {i+1}').add_to(hubs_group)
     hubs_group.add_to(m)
 
-    # Depot
-    depot_group = folium.FeatureGroup(name='Depot', show=True)
+    depot_group = folium.FeatureGroup(name='Depot')
     folium.Marker(depot_loc, icon=folium.Icon(icon='star', prefix='fa', color='red'), popup='Depot', tooltip='Depot').add_to(depot_group)
     depot_group.add_to(m)
 
-    # Heatmap (off by default)
-    heat_group = folium.FeatureGroup(name='Activity Heatmap', show=False)
+    # Heatmap
+    heat_group = folium.FeatureGroup(name='Activity Heatmap')
     HeatMap(heat_data).add_to(heat_group)
     heat_group.add_to(m)
 
@@ -174,7 +159,7 @@ def create_visualization(data, manager, routing, solution, results, output_file=
         'locations': data['locations'],
         'time_windows': data['time_windows'],
         'demands': data['demands'],
-        'vehicle_capacities': data['vehicle_capacities'] + [0] * data['num_hubs'],
+        'vehicle_capacities': data['vehicle_capacities'] + [0] * data['num_hubs'],  # include dummies
         'max_time': max_time,
         'colors': colors_hex,
         'num_vehicles': data['num_vehicles'],
@@ -182,13 +167,12 @@ def create_visualization(data, manager, routing, solution, results, output_file=
         'transfers': results['transfers'],
         'num_customers': data['num_customers'],
         'time_per_demand_unit': data['time_per_demand_unit'],
-        'baseline_distance': data.get('baseline_distance', 0),
-        'customer_arrival': customer_arrival
+        'baseline_distance': data.get('baseline_distance', 0)
     }
     js_data = convert_to_json_serializable(js_data)
     js_data_json = json.dumps(js_data)
 
-    # CSS with pulse for hubs
+    # CSS
     css = '''
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
     <style>
@@ -198,8 +182,6 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     .spinner { border: 4px solid rgba(0,0,0,0.1); border-left-color: #7983ff; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; position: absolute; top: -30px; left: 0; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .progress { height: 5px; background: green; }
-    .pulse { animation: pulse 2s infinite; }
-    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
     </style>
     '''
     m.get_root().header.add_child(folium.Element(css))
@@ -244,22 +226,16 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     script = f'''
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script>
-    var map = map_{map_id};
+    var map = window.map_{map_id};
     var jsData = {js_data_json};
     var vehicleMarkers = [];
     var spinnerMarkers = [];
     var transferMarkers = [];
-    var hubMarkers = [];
-    jsData.results.transfers.forEach(function(tr, idx) {{
+    jsData.results.transfers.forEach(function(tr) {{
         var icon = L.divIcon({{html: '<div style="background: yellow; padding: 2px;">P</div>', iconSize: [20,20]}});
         var marker = L.marker(jsData.locations[tr.hub], {{icon: icon, opacity: 0}});
         marker.addTo(map);
         transferMarkers.push(marker);
-        // Hub pulsing
-        var hubIcon = L.divIcon({{html: '<div class="hub-icon"><i class="fa fa-circle" style="color:green; font-size:20px;"></i><i class="fa fa-arrows-alt" style="position:absolute; top:5px; left:5px; color:white; font-size:10px;"></i></div>', iconSize: [20,20]}});
-        var hubMarker = L.marker(jsData.locations[tr.hub], {{icon: hubIcon}});
-        hubMarker.addTo(map);
-        hubMarkers.push(hubMarker);
     }});
     for (var v = 0; v < jsData.num_vehicles; v++) {{
         var cap = jsData.vehicle_capacities[v];
@@ -285,11 +261,6 @@ def create_visualization(data, manager, routing, solution, results, output_file=
             }}
             var opacity = (t >= tr.deposit_t && t < tr.pickup_t) ? 1 : 0;
             transferMarkers[idx].setOpacity(opacity);
-            if (opacity > 0) {{
-                hubMarkers[idx]._icon.classList.add('pulse');
-            }} else {{
-                hubMarkers[idx]._icon.classList.remove('pulse');
-            }}
         }});
         for (var v = 0; v < jsData.num_vehicles; v++) {{
             var route = jsData.results.per_livreur.routes[v];
@@ -325,16 +296,16 @@ def create_visualization(data, manager, routing, solution, results, output_file=
                 lat = loc_from[0];
                 lng = loc_from[1];
                 remaining = remainings[i];
-                var show_spinner = (t > time_from && t < depart_time) ? 1 : 0;
+                var show_spinner = t > time_from && t < depart_time;
                 spinnerMarkers[v].setLatLng([lat, lng]);
-                spinnerMarkers[v].setOpacity(show_spinner);
+                spinnerMarkers[v].setOpacity(show_spinner ? 1 : 0);
             }}
             vehicleMarkers[v].setLatLng([lat, lng]);
-            var html = vehicleMarkers[v].getIcon().options.html;
-            html = html.replace(/Charge: \d+\/\d+/, 'Charge: ' + remaining + '/' + jsData.vehicle_capacities[v]);
-            var progress_width = (remaining / jsData.vehicle_capacities[v] * 100) || 0;
+            var icon = vehicleMarkers[v].getIcon();
+            var html = icon.options.html.replace(/Charge: [^<]+/, 'Charge: ' + remaining + '/' + jsData.vehicle_capacities[v]);
+            var progress_width = (remaining / jsData.vehicle_capacities[v] * 100);
             var progress_color = progress_width > 50 ? 'green' : 'red';
-            html = html.replace(/background: [^;]+; width: [^;]+%/, 'background: ' + progress_color + '; width: ' + progress_width);
+            html = html.replace(/background: [^;]+; width: [^;]+;/, 'background: ' + progress_color + '; width: ' + progress_width + '%;');
             vehicleMarkers[v].setIcon(L.divIcon({{html: html, iconSize: [30,30]}}));
             if (from >= 1 && from <= jsData.num_customers && t >= time_to) {{
                 delivered++;
@@ -357,7 +328,7 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     var timer = null;
     var speed = 1;
     document.getElementById('play').addEventListener('click', function() {{
-        if (timer) clearInterval(timer);
+        clearInterval(timer);
         timer = setInterval(function() {{
             var val = parseInt(slider.value) + speed;
             if (val > jsData.max_time) {{

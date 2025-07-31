@@ -59,7 +59,8 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
         loads.append(solution.Value(capacity_dimension.CumulVar(index)))
         routes.append(route)
         estimated_times.append(times)
-        remaining_charges.append([data['vehicle_capacities'][v] - l for l in loads])  # Assume remaining = cap - cumul delivered
+        cap = data['vehicle_capacities'][v] if v < len(data['vehicle_capacities']) else 0
+        remaining_charges.append([cap - l for l in loads])
 
     total_distance = get_total_distance(manager, routing, solution, data)
     total_tardiness = 0
@@ -74,11 +75,25 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
             index = solution.Value(routing.NextVar(index))
 
     activated_hubs = set()
+    hub_start = 1 + data['num_customers']
     for h in range(data['num_hubs']):
-        for v in range(data['num_vehicles']):
-            node = data['hub_indices'][h][v]
-            if solution.Value(routing.ActiveVar(manager.NodeToIndex(node))) == 1:
-                activated_hubs.add(h)
+        activated = False
+        # Vérifier le nœud hub original
+        hub_node = hub_start + h
+        hub_index = manager.NodeToIndex(hub_node)
+        if solution.Value(routing.ActiveVar(hub_index)) == 1:
+            activated = True
+        # Vérifier également les dépôts et pickups si disponibles (pour couvrir les transferts)
+        if 'hub_deposits' in data and 'hub_pickups' in data:
+            if h < len(data['hub_deposits']):
+                deposit = data['hub_deposits'][h]
+                pickup = data['hub_pickups'][h]
+                dep_index = manager.NodeToIndex(deposit)
+                pick_index = manager.NodeToIndex(pickup)
+                if solution.Value(routing.ActiveVar(dep_index)) == 1 or solution.Value(routing.ActiveVar(pick_index)) == 1:
+                    activated = True
+        if activated:
+            activated_hubs.add(h)
 
     loads = [solution.Value(capacity_dimension.CumulVar(routing.End(v))) for v in range(data['num_vehicles'])]
     imbalance = max(loads) - min(loads) if loads else 0
