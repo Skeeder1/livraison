@@ -1,3 +1,4 @@
+# File: print_solution.py
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -162,199 +163,30 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     js_data_json = json.dumps(js_data)
 
     # CSS
+    with open('./optimizer/visualization/styles.css', 'r') as f:
+        style_content = f.read()
     css = '''
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
     <style>
-    #info-panel { position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; z-index: 1000; }
-    #controls { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; z-index: 1000; }
-    #legend { position: absolute; bottom: 10px; left: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; z-index: 1000; }
-    .spinner { border: 4px solid rgba(0,0,0,0.1); border-left-color: #7983ff; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; position: absolute; top: -30px; left: 0; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .progress { height: 5px; background: green; }
+    ''' + style_content + '''
     </style>
     '''
     m.get_root().header.add_child(folium.Element(css))
 
     # HTML
-    html = '''
-    <div id="info-panel">
-        <h3>Stats</h3>
-        <p>Total Distance: <span id="total-distance"></span> (Baseline: {baseline_distance:.2f})</p>
-        <p>Elapsed Time: <span id="elapsed-time"></span></p>
-        <p>Colis Delivered: <span id="delivered"></span></p>
-        <p>Total Delay: <span id="delay"></span></p>
-        <p>Hub Transfers: <span id="transfers"></span></p>
-        <p>Avg Capacity: <span id="avg-capacity"></span></p>
-    </div>
-    <div id="controls">
-        <input type="range" min="0" max="{max_time}" value="0" step="1" id="time-slider" aria-label="Time Slider">
-        <button id="play" aria-label="Play">Play</button>
-        <button id="pause" aria-label="Pause">Pause</button>
-        <button id="replay" aria-label="Replay">Replay</button>
-        <select id="speed" aria-label="Speed">
-            <option value="1">x1</option>
-            <option value="2">x2</option>
-            <option value="5">x5</option>
-        </select>
-        <button id="export" aria-label="Export">Export PNG</button>
-    </div>
-    <div id="legend">
-        <h3>Legend</h3>
-        <ul>
-            <li>Depot: Red Star</li>
-            <li>Customers: Blue House</li>
-            <li>Hubs: Green Circle</li>
-            <li>Livreurs: Colored Bike</li>
-        </ul>
-    </div>
-    '''.format(max_time=max_time, baseline_distance=data.get('baseline_distance', 0))
+    with open('./optimizer/visualization/interface.html', 'r') as f:
+        html_template = f.read()
+    html = html_template.format(max_time=max_time, baseline_distance=data.get('baseline_distance', 0))
     m.get_root().html.add_child(folium.Element(html))
 
     # JS
     map_id = m._id
-    script = f'''
+    with open('./optimizer/visualization/script.js', 'r') as f:
+        script_content = f.read()
+    script = '''
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script>
-    window.addEventListener('load', function() {{
-        console.log("Custom script starting");
-        console.log("Map ID: {map_id}");
-        var map = map_{map_id};
-        console.log("Map object:", map);
-        var jsData = {js_data_json};
-        console.log("jsData loaded:", jsData);
-        var vehicleMarkers = [];
-        var spinnerMarkers = [];
-        var transferMarkers = [];
-        jsData.results.transfers.forEach(function(tr) {{
-            console.log("Adding transfer marker for hub:", tr.hub);
-            var icon = L.divIcon({{html: '<div style="background: yellow; padding: 2px;">P</div>', iconSize: [20,20]}});
-            var marker = L.marker(jsData.locations[tr.hub], {{icon: icon, opacity: 0}});
-            marker.addTo(map);
-            transferMarkers.push(marker);
-        }});
-        for (var v = 0; v < jsData.num_vehicles; v++) {{
-            console.log("Adding vehicle marker for vehicle:", v);
-            var cap = jsData.vehicle_capacities[v];
-            var iconHtml = '<div style="position: relative;"><div style="position: absolute; top: -40px; left: 0; background: white; padding: 2px; border: 1px solid; width: 100px;">Charge: <span class="charge-text">0/' + cap + '</span><div class="progress" style="width: 100%;"></div></div><i class="fas fa-bicycle" style="color:' + jsData.colors[v] + '; font-size:24px;"></i></div>';
-            var icon = L.divIcon({{html: iconHtml, iconSize: [30,30]}});
-            var marker = L.marker(jsData.locations[jsData.results.per_livreur.routes[v][0]], {{icon: icon}});
-            marker.addTo(map);
-            vehicleMarkers.push(marker);
-            var spinner = L.divIcon({{html: '<div class="spinner"></div>', iconSize: [24,24]}});
-            var spinnerMarker = L.marker([0,0], {{icon: spinner, opacity: 0}});
-            spinnerMarker.addTo(map);
-            spinnerMarkers.push(spinnerMarker);
-        }}
-        function updateAtTime(t) {{
-            console.log("Updating at time:", t);
-            var delivered = 0;
-            var total_delay = 0;
-            var transfers_done = 0;
-            var total_load = 0;
-            var total_cap = 0;
-            jsData.results.transfers.forEach(function(tr, idx) {{
-                if (t >= tr.pickup_t) {{
-                    transfers_done++;
-                }}
-                var opacity = (t >= tr.deposit_t && t < tr.pickup_t) ? 1 : 0;
-                transferMarkers[idx].setOpacity(opacity);
-            }});
-            for (var v = 0; v < jsData.num_vehicles; v++) {{
-                var route = jsData.results.per_livreur.routes[v];
-                var times = jsData.results.per_livreur.estimated_times[v];
-                var remainings = jsData.results.per_livreur.remaining_charges[v];
-                var slacks = jsData.results.per_livreur.slacks[v];
-                var i = 0;
-                for (; i < times.length - 1; i++) {{
-                    if (t < times[i + 1]) break;
-                }}
-                if (t >= times[times.length - 1]) i = times.length - 2;
-                var from = route[i];
-                var to = route[i + 1];
-                var time_from = times[i];
-                var time_to = times[i + 1];
-                var slack = slacks[i];
-                var service = Math.abs(jsData.demands[from]) * jsData.time_per_demand_unit;
-                var depart_time = time_from + service + slack;
-                var travel = time_to - depart_time;
-                var loc_from = jsData.locations[from];
-                var loc_to = jsData.locations[to];
-                var is_on_road = t >= depart_time;
-                var lat, lng;
-                var remaining;
-                if (is_on_road) {{
-                    var fraction = (t - depart_time) / travel;
-                    fraction = Math.min(1, Math.max(0, fraction));
-                    lat = loc_from[0] + fraction * (loc_to[0] - loc_from[0]);
-                    lng = loc_from[1] + fraction * (loc_to[1] - loc_from[1]);
-                    remaining = remainings[i + 1];
-                    spinnerMarkers[v].setOpacity(0);
-                }} else {{
-                    lat = loc_from[0];
-                    lng = loc_from[1];
-                    remaining = remainings[i];
-                    var show_spinner = t > time_from && t < depart_time;
-                    spinnerMarkers[v].setLatLng([lat, lng]);
-                    spinnerMarkers[v].setOpacity(show_spinner ? 1 : 0);
-                }}
-                vehicleMarkers[v].setLatLng([lat, lng]);
-                var icon = vehicleMarkers[v].getIcon();
-                var html = icon.options.html.replace(/Charge: [^<]+/, 'Charge: ' + remaining + '/' + jsData.vehicle_capacities[v]);
-                var progress_width = (remaining / jsData.vehicle_capacities[v] * 100);
-                var progress_color = progress_width > 50 ? 'green' : 'red';
-                html = html.replace(/background: [^;]+; width: [^;]+;/, 'background: ' + progress_color + '; width: ' + progress_width + '%;');
-                vehicleMarkers[v].setIcon(L.divIcon({{html: html, iconSize: [30,30]}}));
-                if (from >= 1 && from <= jsData.num_customers && t >= time_to) {{
-                    delivered++;
-                    var tw_end = jsData.time_windows[from][1];
-                    total_delay += Math.max(0, time_from - tw_end);
-                }}
-                var load = jsData.vehicle_capacities[v] - remaining;
-                total_load += load;
-                total_cap += jsData.vehicle_capacities[v];
-            }}
-            document.getElementById('total-distance').innerText = jsData.results.indicators.total_distance.toFixed(2);
-            document.getElementById('elapsed-time').innerText = t;
-            document.getElementById('delivered').innerText = delivered;
-            document.getElementById('delay').innerText = total_delay.toFixed(2);
-            document.getElementById('transfers').innerText = transfers_done;
-            document.getElementById('avg-capacity').innerText = (total_load / total_cap * 100).toFixed(2) + '%';
-            console.log("Update complete for time:", t);
-        }}
-        var slider = document.getElementById('time-slider');
-        slider.addEventListener('input', function() {{ updateAtTime(parseInt(this.value)); }});
-        var timer = null;
-        var speed = 1;
-        document.getElementById('play').addEventListener('click', function() {{
-            clearInterval(timer);
-            timer = setInterval(function() {{
-                var val = parseInt(slider.value) + speed;
-                if (val > jsData.max_time) {{
-                    clearInterval(timer);
-                    return;
-                }}
-                slider.value = val;
-                updateAtTime(val);
-            }}, 50);
-        }});
-        document.getElementById('pause').addEventListener('click', function() {{ clearInterval(timer); }});
-        document.getElementById('replay').addEventListener('click', function() {{
-            clearInterval(timer);
-            slider.value = 0;
-            updateAtTime(0);
-        }});
-        document.getElementById('speed').addEventListener('change', function() {{ speed = parseInt(this.value); }});
-        document.getElementById('export').addEventListener('click', function() {{
-            html2canvas(document.querySelector('#map_{map_id}')).then(canvas => {{
-                var link = document.createElement('a');
-                link.download = 'vrp_visualization.png';
-                link.href = canvas.toDataURL();
-                link.click();
-            }});
-        }});
-        updateAtTime(0);
-        console.log("Custom script ended");
-    }});
+    ''' + script_content.replace('{map_id}', map_id).replace('{js_data_json}', js_data_json) + '''
     </script>
     '''
     m.get_root().html.add_child(folium.Element(script))

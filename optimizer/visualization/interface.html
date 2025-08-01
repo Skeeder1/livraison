@@ -1,0 +1,31 @@
+<!-- File: interface.html -->
+<div id="info-panel">
+    <h3>Stats</h3>
+    <p>Total Distance: <span id="total-distance"></span> (Baseline: {baseline_distance:.2f})</p>
+    <p>Elapsed Time: <span id="elapsed-time"></span></p>
+    <p>Colis Delivered: <span id="delivered"></span></p>
+    <p>Total Delay: <span id="delay"></span></p>
+    <p>Hub Transfers: <span id="transfers"></span></p>
+    <p>Avg Capacity: <span id="avg-capacity"></span></p>
+</div>
+<div id="controls">
+    <input type="range" min="0" max="{max_time}" value="0" step="1" id="time-slider" aria-label="Time Slider">
+    <button id="play" aria-label="Play">Play</button>
+    <button id="pause" aria-label="Pause">Pause</button>
+    <button id="replay" aria-label="Replay">Replay</button>
+    <select id="speed" aria-label="Speed">
+        <option value="1">x1</option>
+        <option value="2">x2</option>
+        <option value="5">x5</option>
+    </select>
+    <button id="export" aria-label="Export">Export PNG</button>
+</div>
+<div id="legend">
+    <h3>Legend</h3>
+    <ul>
+        <li>Depot: Red Star</li>
+        <li>Customers: Blue House</li>
+        <li>Hubs: Green Circle</li>
+        <li>Livreurs: Colored Bike</li>
+    </ul>
+</div>

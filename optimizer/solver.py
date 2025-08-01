@@ -2,6 +2,8 @@
 from functools import partial
 from ortools.constraint_solver import pywrapcp
 from ortools.constraint_solver import routing_enums_pb2
+from optimizer.config import TIME_TO_SOLVE
+# Default value for time_to_solve
 
 def solve_vrp(data):
     """Solves the VRP using the provided data."""
@@ -257,7 +259,7 @@ def solve_vrp(data):
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
     search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-    search_parameters.time_limit.FromSeconds(30)
+    search_parameters.time_limit.FromSeconds(60)
 
     # Solve
     solution = routing.SolveWithParameters(search_parameters)

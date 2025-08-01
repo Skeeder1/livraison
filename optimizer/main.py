@@ -4,19 +4,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import os
-# optimizer/solver.py
-import logging
-
 # Configure Python logging to console
+import logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(message)s', handlers=[logging.StreamHandler()])
 
+# Configure OR-Tools logging
+os.environ['GLOG_logtostderr'] = '1'
+os.environ['GLOG_minloglevel'] = '0'
+os.environ['GLOG_v'] = '3'  # Verbose level; increase if needed
+
+# Import project modules
 from optimizer.data_loader import load_data
 from optimizer.preprocessor import preprocess
 from optimizer.solver import solve_vrp
 from optimizer.postprocessor import get_results
-os.environ['GLOG_logtostderr'] = '1'
-os.environ['GLOG_minloglevel'] = '0'
-os.environ['GLOG_v'] = '3'  # Verbose level; increase if needed
+from optimizer.print_solution import create_visualization
 
 if __name__ == '__main__':
     print(f"begining VRP solving")
@@ -33,4 +35,6 @@ if __name__ == '__main__':
     if solution is None:
         print("No solution found")
     results = get_results(data, manager, routing, solution)
+    create_visualization(data, manager, routing, solution, results)
+
     print(results)
