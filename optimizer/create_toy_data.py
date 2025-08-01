@@ -12,7 +12,6 @@ POSITION_RANGE_MAX: float = 10.0  # Max value for random positions
 SPEED_FACTOR: float = 10.0  # Factor to convert distance to time (time_matrix = distance_matrix * SPEED_FACTOR)
 
 # Customers (colis)
-NUM_CUSTOMERS: int = 25  # Number of customers
 CUSTOMER_VOLUME_MIN: float = 1.0  # Min volume per customer
 CUSTOMER_VOLUME_MAX: float = 1.0  # Max volume per customer
 TW_START_MIN: int = 0  # Min time window start (minutes from midnight)
@@ -23,16 +22,18 @@ TW_END_MAX: int = 200000  # Max time window end
 # Vehicles (livreurs)
 START_TIME_MIN: int = 0  # Min start time for shifts
 START_TIME_MAX: int = 0  # Max start time (set to same for uniform)
-END_TIME_MIN: int = 300000  # Min end time for shifts
-END_TIME_MAX: int = 300000  # Max end time
+END_TIME_MIN: int = 200000  # Min end time for shifts
+END_TIME_MAX: int = 200000  # Max end time
 
 # Hubs
+NUM_CUSTOMERS: int = 85  # Number of customers
+
 NUM_HUBS: int = 1  # Number of hubs
 HUB_LOAD_LIMIT: float = 5.0  # Load limit per hub (None for no limit)
 
-NUM_VEHICLES: int = 2  # Number of vehicles
-VEHICLE_CAPACITY_MIN: float = 20.0  # Min capacity per vehicle
-VEHICLE_CAPACITY_MAX: float = 20.0  # Max capacity per vehicle
+NUM_VEHICLES: int = 5  # Number of vehicles
+VEHICLE_CAPACITY_MIN: float = 10.0  # Min capacity per vehicle
+VEHICLE_CAPACITY_MAX: float = 10.0  # Max capacity per vehicle
 
 # Weights
 WEIGHTS_DICT = {

@@ -1,0 +1,7 @@
+/* File: styles.css */
+#info-panel { position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; z-index: 1000; }
+#controls { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; z-index: 1000; }
+#legend { position: absolute; bottom: 10px; left: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; z-index: 1000; }
+.spinner { border: 4px solid rgba(0,0,0,0.1); border-left-color: #7983ff; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; position: absolute; top: -30px; left: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.progress { height: 5px; background: green; }
