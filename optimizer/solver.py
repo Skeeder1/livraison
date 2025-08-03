@@ -2,9 +2,9 @@
 from functools import partial
 from ortools.constraint_solver import pywrapcp
 from ortools.constraint_solver import routing_enums_pb2
-from optimizer.config import TIME_TO_SOLVE
-# Default value for time_to_solve
+from optimizer.config import Config
 
+# Get solver time limit from config passed in data or from config
 def solve_vrp(data):
     """Solves the VRP using the provided data."""
     # Convert vehicle capacities to integers
@@ -259,7 +259,10 @@ def solve_vrp(data):
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
     search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-    search_parameters.time_limit.FromSeconds(60)
+    
+    # Use time limit from data if provided, otherwise from config
+    time_limit = data.get('time_limit', Config.MAX_TIME_LIMIT)
+    search_parameters.time_limit.FromSeconds(time_limit)
 
     # Solve
     solution = routing.SolveWithParameters(search_parameters)

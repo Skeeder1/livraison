@@ -20,7 +20,7 @@ from optimizer.solver import solve_vrp
 from optimizer.postprocessor import get_results
 from optimizer.print_solution import create_visualization
 
-if __name__ == '__main__':
+def main():
     print(f"begining VRP solving")
     data_dir = os.path.join(os.path.dirname(__file__), 'tests', 'toy_data')
     data = load_data(data_dir)
@@ -28,13 +28,18 @@ if __name__ == '__main__':
     print("preprocessing data")
     data = preprocess(data)
     
-    print(f"begining VRP solving with {data['num_nodes']} nodes and {data['num_vehicles']} vehicles")
-  
+    print(f"begining VRP solving with {data['num_nodes']} nodes and {data['num_vehicles']} vehicles and {data['num_hubs']} hubs")
     manager, routing, solution = solve_vrp(data)
+    
     print(f"Baseline distance: {data['baseline_distance']:.2f}")
     if solution is None:
         print("No solution found")
-    results = get_results(data, manager, routing, solution)
-    create_visualization(data, manager, routing, solution, results)
+    else:
+        results = get_results(data, manager, routing, solution)
+        print(results)
+        create_visualization(data, manager, routing, solution, results)
+        print("Visualization created successfully")
 
-    print(results)
+
+if __name__ == '__main__':
+    main()
