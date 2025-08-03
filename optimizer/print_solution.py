@@ -27,6 +27,10 @@ def convert_to_json_serializable(obj):
         return obj
 
 def create_visualization(data, manager, routing, solution, results, output_file='vrp_visualization.html'):
+    if solution is None:
+        print("Cannot create visualization: No solution found")
+        return
+
     # Recompute base_node as in solver
     base_node = list(range(data['num_nodes']))
     for u in data['unload_depots']:
