@@ -12,9 +12,9 @@ class Config:
     SPEED_FACTOR = 10.0  # Factor to convert distance to time
 
     # Problem size parameters (these will be modified by stats.py)
-    NUM_CUSTOMERS = 25
-    NUM_VEHICLES = 2
-    NUM_HUBS = 0
+    NUM_CUSTOMERS = 10
+    NUM_VEHICLES = 3
+    NUM_HUBS = 2
 
     # Capacity settings
     VEHICLE_CAPACITY_MIN = 10.0
@@ -34,7 +34,7 @@ class Config:
     END_TIME_MAX = 200000
 
     # Analysis parameters
-    MAX_TIME_LIMIT = 30  # Maximum time to try finding a solution (seconds)
+    MAX_TIME_LIMIT = 10  # Maximum time to try finding a solution (seconds)
     TIME_INCREMENT = 10   # Time increment for solution attempts (seconds)
 
     @classmethod
@@ -50,7 +50,3 @@ class Config:
 config = Config()
 
 
-# Other global configuration parameters can be added here
-if __name__ == '__main__':
-    create_toy_data()
-    main()

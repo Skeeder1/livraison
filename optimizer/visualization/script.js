@@ -6,6 +6,9 @@ window.addEventListener('load', function() {
     console.log("Map object:", map);
     var jsData = {js_data_json};
     console.log("jsData loaded:", jsData);
+    console.log("Number of vehicles:", jsData.num_vehicles);
+    console.log("cumulative_loads available:", jsData.results.per_livreur.cumulative_loads);
+    console.log("Routes available:", jsData.results.per_livreur.routes);
     var vehicleMarkers = [];
     var spinnerMarkers = [];
     var transferMarkers = [];
@@ -30,7 +33,6 @@ window.addEventListener('load', function() {
         spinnerMarkers.push(spinnerMarker);
     }
     function updateAtTime(t) {
-        console.log("Updating at time:", t);
         var delivered = 0;
         var total_delay = 0;
         var transfers_done = 0;
@@ -46,13 +48,23 @@ window.addEventListener('load', function() {
         for (var v = 0; v < jsData.num_vehicles; v++) {
             var route = jsData.results.per_livreur.routes[v];
             var times = jsData.results.per_livreur.estimated_times[v];
-            var remainings = jsData.results.per_livreur.remaining_charges[v];
+            var cumulative_loads = jsData.results.per_livreur.cumulative_loads[v];
             var slacks = jsData.results.per_livreur.slacks[v];
+            
+            // Vérifications de sécurité
+            if (!route || !times || !cumulative_loads || !slacks) {
+                console.warn("Missing data for vehicle", v, {route: !!route, times: !!times, cumulative_loads: !!cumulative_loads, slacks: !!slacks});
+                continue;
+            }
             var i = 0;
             for (; i < times.length - 1; i++) {
                 if (t < times[i + 1]) break;
             }
             if (t >= times[times.length - 1]) i = times.length - 2;
+            i = Math.max(0, i); // S'assurer que i n'est jamais négatif
+            
+            console.log("DEBUG: Vehicle", v, "at time", t, "- selected index i:", i, "times length:", times.length, "cumulative_loads length:", cumulative_loads.length);
+            
             var from = route[i];
             var to = route[i + 1];
             var time_from = times[i];
@@ -65,27 +77,45 @@ window.addEventListener('load', function() {
             var loc_to = jsData.locations[to];
             var is_on_road = t >= depart_time;
             var lat, lng;
-            var remaining;
+            var current_load;
+            
+            console.log("DEBUG Vehicle", v, "at time", t, "- route index i:", i, "cumulative_loads[i]:", cumulative_loads[i]);
+            
+            // Calculer la charge actuelle basée sur les vraies données du solver
             if (is_on_road) {
                 var fraction = (t - depart_time) / travel;
                 fraction = Math.min(1, Math.max(0, fraction));
                 lat = loc_from[0] + fraction * (loc_to[0] - loc_from[0]);
                 lng = loc_from[1] + fraction * (loc_to[1] - loc_from[1]);
-                remaining = remainings[i + 1];
+                // En route, utiliser la charge du point de départ
+                current_load = cumulative_loads[i];
                 spinnerMarkers[v].setOpacity(0);
             } else {
                 lat = loc_from[0];
                 lng = loc_from[1];
-                remaining = remainings[i];
+                // Au point, utiliser la charge après le service à ce point
+                current_load = cumulative_loads[i];
                 var show_spinner = t > time_from && t < depart_time;
                 spinnerMarkers[v].setLatLng([lat, lng]);
                 spinnerMarkers[v].setOpacity(show_spinner ? 1 : 0);
             }
+            
+            // Les transferts sont déjà pris en compte dans les données du solver (cumulative_loads)
+            // Pas besoin de recalculer ici
+            
             vehicleMarkers[v].setLatLng([lat, lng]);
             var icon = vehicleMarkers[v].getIcon();
-            var html = icon.options.html.replace(/Charge: [^<]+/, 'Charge: ' + remaining + '/' + jsData.vehicle_capacities[v]);
-            var progress_width = (remaining / jsData.vehicle_capacities[v] * 100);
-            var progress_color = progress_width > 50 ? 'green' : 'red';
+            var capacity = jsData.vehicle_capacities[v];
+            
+            // current_load est maintenant directement la charge actuelle (colis transportés)
+            // S'assurer que current_load est valide
+            current_load = Math.max(0, Math.min(capacity, current_load));
+            
+            console.log("DEBUG: Final display - Vehicle", v, "current_load:", current_load, "capacity:", capacity);
+            
+            var html = icon.options.html.replace(/Charge: [^<]+/, 'Charge: ' + current_load + '/' + capacity);
+            var progress_width = (current_load / capacity * 100);
+            var progress_color = progress_width > 80 ? 'red' : (progress_width > 50 ? 'orange' : 'green');
             html = html.replace(/background: [^;]+; width: [^;]+;/, 'background: ' + progress_color + '; width: ' + progress_width + '%;');
             vehicleMarkers[v].setIcon(L.divIcon({html: html, iconSize: [30,30]}));
             if (from >= 1 && from <= jsData.num_customers && t >= time_to) {
@@ -93,9 +123,8 @@ window.addEventListener('load', function() {
                 var tw_end = jsData.time_windows[from][1];
                 total_delay += Math.max(0, time_from - tw_end);
             }
-            var load = jsData.vehicle_capacities[v] - remaining;
-            total_load += load;
-            total_cap += jsData.vehicle_capacities[v];
+            total_load += current_load;
+            total_cap += capacity;
         }
         document.getElementById('total-distance').innerText = jsData.results.indicators.total_distance.toFixed(2);
         document.getElementById('elapsed-time').innerText = t;
@@ -103,7 +132,6 @@ window.addEventListener('load', function() {
         document.getElementById('delay').innerText = total_delay.toFixed(2);
         document.getElementById('transfers').innerText = transfers_done;
         document.getElementById('avg-capacity').innerText = (total_load / total_cap * 100).toFixed(2) + '%';
-        console.log("Update complete for time:", t);
     }
     var slider = document.getElementById('time-slider');
     slider.addEventListener('input', function() { updateAtTime(parseInt(this.value)); });
@@ -137,5 +165,12 @@ window.addEventListener('load', function() {
         });
     });
     updateAtTime(0);
+    
+    // Test debug : forcer un affichage à t=50 pour voir l'évolution
+    setTimeout(function() {
+        console.log("=== FORCED UPDATE AT t=50 ===");
+        updateAtTime(50);
+    }, 1000);
+    
     console.log("Custom script ended");
 });

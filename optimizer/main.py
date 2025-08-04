@@ -19,8 +19,12 @@ from optimizer.preprocessor import preprocess
 from optimizer.solver import solve_vrp
 from optimizer.postprocessor import get_results
 from optimizer.print_solution import create_visualization
+from optimizer.create_toy_data import create_toy_data
+from optimizer.config import Config
 
+# Main function to run the VRP solution process
 def main():
+    create_toy_data()
     print(f"begining VRP solving")
     data_dir = os.path.join(os.path.dirname(__file__), 'tests', 'toy_data')
     data = load_data(data_dir)
@@ -39,6 +43,7 @@ def main():
         print(results)
         create_visualization(data, manager, routing, solution, results)
         print("Visualization created successfully")
+    
 
 
 if __name__ == '__main__':
