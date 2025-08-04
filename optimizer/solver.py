@@ -19,7 +19,7 @@ def solve_vrp(data):
     reload_group = [data['depot']]
 
     # Add unload depots for reloads at depot
-    num_unload_depots = 5  # From cvrptw_reload_V1.py
+    num_unload_depots = 10  # From cvrptw_reload_V1.py
     data['unload_depots'] = []
     current_num = len(data['locations'])
     max_vehicle_capacity = max(vehicle_capacities) if vehicle_capacities else 0
@@ -42,8 +42,11 @@ def solve_vrp(data):
         pickup = current_num + 1
         data['locations'].append(data['locations'][h])
         data['locations'].append(data['locations'][h])
-        data['demands'].append(-hub_capacity)
-        data['demands'].append(hub_capacity)
+        # Corrected hub logic:
+        # - deposit node: vehicle drops off items -> positive demand (increases load)
+        # - pickup node: vehicle picks up items -> negative demand (decreases load)
+        data['demands'].append(hub_capacity)  # Deposit: increase vehicle load
+        data['demands'].append(-hub_capacity)  # Pickup: decrease vehicle load
         data['time_windows'].append(data['time_windows'][h])
         data['time_windows'].append(data['time_windows'][h])
         data['hub_deposits'].append(deposit)
@@ -129,7 +132,6 @@ def solve_vrp(data):
 
     # Distance dimension
     distance_evaluator_index = routing.RegisterTransitCallback(partial(create_distance_evaluator(data), manager))
-    routing.SetArcCostEvaluatorOfAllVehicles(distance_evaluator_index)
     distance = 'Distance'
     routing.AddDimension(
         distance_evaluator_index,
@@ -254,6 +256,12 @@ def solve_vrp(data):
         dummy_time = time_dimension.CumulVar(dummy_index)
         routing.solver().Add(time_dimension.CumulVar(deposit_index) <= dummy_time)
         routing.solver().Add(dummy_time <= time_dimension.CumulVar(pickup_index))
+
+    # Objective function
+    print("time_dimension", time_evaluator_index , " n/ distance_evaluator_index", distance_evaluator_index)
+    objectif = time_evaluator_index  + distance_evaluator_index
+    routing.SetArcCostEvaluatorOfAllVehicles(time_evaluator_index)
+
 
     # Search parameters
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()

@@ -67,6 +67,51 @@ def create_visualization(data, manager, routing, solution, results, output_file=
         slacks_list.append(route_slacks)
     results['per_livreur']['slacks'] = slacks_list
 
+    # Compute cumulative loads for visualization (use real solver data)
+    cumulative_loads = []
+    # Utiliser seulement les vrais véhicules, pas les dummy vehicles
+    num_real_vehicles = len(data['vehicle_capacities'])
+    print(f"DEBUG: Computing cumulative loads for {num_real_vehicles} real vehicles out of {data['num_vehicles']} total")
+    
+    # Calculer pour tous les véhicules (réels + dummy)
+    for v in range(data['num_vehicles']):
+        if v < num_real_vehicles:
+            # Véhicule réel
+            route = results['per_livreur']['routes'][v]
+            vehicle_capacity = data['vehicle_capacities'][v]
+            print(f"DEBUG: Vehicle {v} - capacity: {vehicle_capacity}, route: {route}")
+            
+    # Use the correctly computed current_loads from postprocessor
+    # current_loads now contains the actual load carried, not remaining capacity
+    cumulative_loads = []
+    
+    # Calculer pour tous les véhicules (réels + dummy)
+    for v in range(data['num_vehicles']):
+        if v < num_real_vehicles:
+            # Véhicule réel - utiliser les données du postprocessor
+            current_loads = results['per_livreur']['current_loads'][v]  # Maintenant c'est la charge transportée
+            vehicle_capacity = data['vehicle_capacities'][v]
+            
+            # Convertir charge transportée en capacité restante pour la visualisation
+            remaining_charges = []
+            for load in current_loads:
+                remaining_capacity = vehicle_capacity - load
+                remaining_charges.append(remaining_capacity)
+            
+            print(f"DEBUG: Vehicle {v} - capacity: {vehicle_capacity}")
+            print(f"DEBUG: Vehicle {v} - current_loads: {current_loads}")
+            print(f"DEBUG: Vehicle {v} - remaining_charges: {remaining_charges}")
+            
+            cumulative_loads.append(current_loads)  # Utiliser les charges transportées
+        else:
+            # Véhicule dummy - capacité toujours 0
+            route = results['per_livreur']['routes'][v]
+            dummy_loads = [0] * len(route)
+            print(f"DEBUG: Dummy vehicle {v}, loads: {dummy_loads}")
+            cumulative_loads.append(dummy_loads)
+    
+    results['per_livreur']['cumulative_loads'] = cumulative_loads
+
     # Compute transfers
     transfers = []
     for i in range(data['num_hubs']):
@@ -105,11 +150,11 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     m = folium.Map(location=depot_loc, zoom_start=12)
 
     # Colors
-    colors = cm.tab10(np.linspace(0, 1, data['num_vehicles']))
+    colors = cm.tab10(np.linspace(0, 1, num_real_vehicles))
     colors_hex = ['#%02x%02x%02x' % (int(r*255), int(g*255), int(b*255)) for r, g, b, _ in colors]
 
     # Route groups
-    for v in range(data['num_vehicles']):
+    for v in range(num_real_vehicles):
         group = folium.FeatureGroup(name=f'Route {v+1}')
         route = results['per_livreur']['routes'][v]
         route_locs = [data['locations'][node] for node in route]
@@ -153,13 +198,16 @@ def create_visualization(data, manager, routing, solution, results, output_file=
         'locations': data['locations'],
         'time_windows': data['time_windows'],
         'demands': data['demands'],
-        'vehicle_capacities': data['vehicle_capacities'] + [0] * data['num_hubs'],  # include dummies
+        'vehicle_capacities': data['vehicle_capacities'] + [0] * (data['num_vehicles'] - num_real_vehicles),  # Include dummy vehicles
         'max_time': max_time,
-        'colors': colors_hex,
-        'num_vehicles': data['num_vehicles'],
+        'colors': colors_hex + ['#000000'] * (data['num_vehicles'] - num_real_vehicles),  # Black for dummy vehicles
+        'num_vehicles': data['num_vehicles'],  # All vehicles including dummies
         'depot': data['depot'],
         'transfers': results['transfers'],
         'num_customers': data['num_customers'],
+        'num_hubs': data['num_hubs'],
+        'hub_deposits': data.get('hub_deposits', []),
+        'hub_pickups': data.get('hub_pickups', []),
         'time_per_demand_unit': data['time_per_demand_unit'],
         'baseline_distance': data.get('baseline_distance', 0)
     }
@@ -167,7 +215,8 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     js_data_json = json.dumps(js_data)
 
     # CSS
-    with open('./optimizer/visualization/styles.css', 'r') as f:
+    css_path = os.path.join(os.path.dirname(__file__), 'visualization', 'styles.css')
+    with open(css_path, 'r') as f:
         style_content = f.read()
     css = '''
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
@@ -178,14 +227,16 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     m.get_root().header.add_child(folium.Element(css))
 
     # HTML
-    with open('./optimizer/visualization/interface.html', 'r') as f:
+    html_path = os.path.join(os.path.dirname(__file__), 'visualization', 'interface.html')
+    with open(html_path, 'r') as f:
         html_template = f.read()
     html = html_template.format(max_time=max_time, baseline_distance=data.get('baseline_distance', 0))
     m.get_root().html.add_child(folium.Element(html))
 
     # JS
     map_id = m._id
-    with open('./optimizer/visualization/script.js', 'r') as f:
+    js_path = os.path.join(os.path.dirname(__file__), 'visualization', 'script.js')
+    with open(js_path, 'r') as f:
         script_content = f.read()
     script = '''
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
