@@ -167,7 +167,7 @@ def solve_vrp(data):
 
     for node in hub_indices:
         node_index = manager.NodeToIndex(node)
-        routing.AddDisjunction([node_index], 0)
+        routing.AddDisjunction([node_index], 500)
 
     for node in data['hub_deposits'] + data['hub_pickups']:
         node_index = manager.NodeToIndex(node)

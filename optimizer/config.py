@@ -3,18 +3,18 @@
 # Configuration variables for data generation
 class Config:
     # Solver configuration
-    TIME_TO_SOLVE = 30  # seconds
+    TIME_TO_SOLVE = 10  # seconds
     
     # General settings
     DEPOT_POSITION = (0.0, 0.0)  # Fixed depot position
-    POSITION_RANGE_MIN = 0.0  # Min value for random positions (lat/long)
-    POSITION_RANGE_MAX = 10.0  # Max value for random positions
+    POSITION_RANGE_MIN = -5.0  # Min value for random positions (lat/long)
+    POSITION_RANGE_MAX = 5.0  # Max value for random positions
     SPEED_FACTOR = 10.0  # Factor to convert distance to time
 
     # Problem size parameters (these will be modified by stats.py)
-    NUM_CUSTOMERS = 10
+    NUM_CUSTOMERS = 45
     NUM_VEHICLES = 3
-    NUM_HUBS = 0
+    NUM_HUBS = 1
 
     # Capacity settings
     VEHICLE_CAPACITY_MIN = 10.0

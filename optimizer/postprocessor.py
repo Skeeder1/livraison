@@ -80,7 +80,7 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
                 print(f"      {Colors.WHITE}Étape {i+1:2d}:{Colors.RESET} {node_type:<25} | {Colors.YELLOW}Arrivée: {time:3d}min{Colors.RESET} | {Colors.CYAN}Charge: {load:2d}/{vehicle_capacity}{Colors.RESET} | {Colors.MAGENTA}Capacité restante: {remain:2d}{Colors.RESET}")
                 continue
             elif node > data['num_customers']:
-                node_type = f"{Colors.MAGENTA}🔄 Hub {node - data['num_customers']}{Colors.RESET}"
+                node_type = f"{Colors.MAGENTA}🔄 DÉPÔT {node - data['num_customers']}{Colors.RESET}"
             else:
                 node_type = f"{Colors.WHITE}? Nœud {node}{Colors.RESET}"
             
@@ -99,7 +99,7 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
     print(f"{'='*80}{Colors.RESET}")
 
     # Affichage des informations générales
-    print(f"\n{Colors.BOLD}{Colors.GREEN}📈 INDICATEURS GLOBAUX:{Colors.RESET}")
+    print(f"\n{Colors.BOLD}{Colors.RED}📈 INDICATEURS GLOBAUX:{Colors.RESET}")
     print(f"   {Colors.CYAN}Distance totale           :{Colors.RESET} {Colors.YELLOW}{total_distance}{Colors.RESET} unités")
     print(f"   {Colors.CYAN}Retard total              :{Colors.RESET} {Colors.RED if total_tardiness > 0 else Colors.GREEN}{total_tardiness}{Colors.RESET} minutes")
     print(f"   {Colors.CYAN}Hubs activés              :{Colors.RESET} {Colors.MAGENTA}{len(activated_hubs)}{Colors.RESET}")
@@ -265,11 +265,17 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
             # Charge cumulée transportée au nœud (dimension capacité)
             # Dans OR-Tools, CumulVar représente la charge totale collectée/transportée
             # Charge du véhicule
+            # Vérifier si l'index du véhicule existe dans vehicle_capacities
+            if v < len(data['vehicle_capacities']):
+                vehicle_capacity = data['vehicle_capacities'][v]
+            else:
+                vehicle_capacity = 0  # Véhicule dummy, capacité = 0
+            
             if node == 0 and count == 0:
-                load_value = data['vehicle_capacities'][v] - (solution.Value(capacity_dimension.CumulVar(index)))
+                load_value = vehicle_capacity - (solution.Value(capacity_dimension.CumulVar(index)))
                 count += 1
             else:
-                load_value = data['vehicle_capacities'][v] - (solution.Value(capacity_dimension.CumulVar(index)) + 1)
+                load_value = vehicle_capacity - (solution.Value(capacity_dimension.CumulVar(index)) + 1)
 
             loads.append(load_value)
             index = solution.Value(routing.NextVar(index))  # Passer au nœud suivant
