@@ -287,7 +287,7 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
         
         # Calculer la capacité restante à chaque étape
         # Capacité restante = Capacité totale du véhicule - Charge cumulée transportée
-        cap = data['vehicle_capacities'][v] if v < len(data['vehicle_capacities']) else (print('\033[91mERROR: Vehicle capacity not found!\033[0m') or 0)
+        cap = data['vehicle_capacities'][v] if v < len(data['vehicle_capacities']) else 0  # Véhicule factice
         remaining_charges.append([cap - l for l in loads])
         current_loads.append(loads)  # Store current loads for each vehicle
 
