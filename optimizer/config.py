@@ -14,7 +14,7 @@ class Config:
     # Problem size parameters (these will be modified by stats.py)
     NUM_CUSTOMERS = 10
     NUM_VEHICLES = 3
-    NUM_HUBS = 2
+    NUM_HUBS = 0
 
     # Capacity settings
     VEHICLE_CAPACITY_MIN = 10.0

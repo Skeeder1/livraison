@@ -71,7 +71,6 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     cumulative_loads = []
     # Utiliser seulement les vrais véhicules, pas les dummy vehicles
     num_real_vehicles = len(data['vehicle_capacities'])
-    print(f"DEBUG: Computing cumulative loads for {num_real_vehicles} real vehicles out of {data['num_vehicles']} total")
     
     # Calculer pour tous les véhicules (réels + dummy)
     for v in range(data['num_vehicles']):
@@ -79,7 +78,6 @@ def create_visualization(data, manager, routing, solution, results, output_file=
             # Véhicule réel
             route = results['per_livreur']['routes'][v]
             vehicle_capacity = data['vehicle_capacities'][v]
-            print(f"DEBUG: Vehicle {v} - capacity: {vehicle_capacity}, route: {route}")
             
     # Use the correctly computed current_loads from postprocessor
     # current_loads now contains the actual load carried, not remaining capacity
@@ -98,16 +96,11 @@ def create_visualization(data, manager, routing, solution, results, output_file=
                 remaining_capacity = vehicle_capacity - load
                 remaining_charges.append(remaining_capacity)
             
-            print(f"DEBUG: Vehicle {v} - capacity: {vehicle_capacity}")
-            print(f"DEBUG: Vehicle {v} - current_loads: {current_loads}")
-            print(f"DEBUG: Vehicle {v} - remaining_charges: {remaining_charges}")
-            
             cumulative_loads.append(current_loads)  # Utiliser les charges transportées
         else:
             # Véhicule dummy - capacité toujours 0
             route = results['per_livreur']['routes'][v]
             dummy_loads = [0] * len(route)
-            print(f"DEBUG: Dummy vehicle {v}, loads: {dummy_loads}")
             cumulative_loads.append(dummy_loads)
     
     results['per_livreur']['cumulative_loads'] = cumulative_loads
