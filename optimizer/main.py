@@ -1,11 +1,15 @@
 # optimizer/main.py
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import os
-# Configure Python logging to console
+import sys
 import logging
+
+from pathlib import Path
+from colorama import init
+init(autoreset=True)
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
+# Configure Python logging to console
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(message)s', handlers=[logging.StreamHandler()])
 
 # Configure OR-Tools logging

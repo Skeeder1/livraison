@@ -95,7 +95,6 @@ def create_visualization(data, manager, routing, solution, results, output_file=
             for load in current_loads:
                 remaining_capacity = vehicle_capacity - load
                 remaining_charges.append(remaining_capacity)
-            
             cumulative_loads.append(current_loads)  # Utiliser les charges transportées
         else:
             # Véhicule dummy - capacité toujours 0
