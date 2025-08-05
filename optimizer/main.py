@@ -18,7 +18,7 @@ from optimizer.data_loader import load_data
 from optimizer.preprocessor import preprocess
 from optimizer.solver import solve_vrp
 from optimizer.postprocessor import get_results
-from optimizer.print_solution import create_visualization
+from optimizer.print_solution import create_visualization 
 from optimizer.create_toy_data import create_toy_data
 from optimizer.config import Config
 
@@ -40,7 +40,15 @@ def main():
         print("No solution found")
     else:
         results = get_results(data, manager, routing, solution)
-        print(results)
+        for key, value in results.items():
+            if isinstance(value, dict):
+                print(f"{key}:")
+                for subkey, subvalue in value.items():
+                    print(f"  {subkey}: {subvalue}")
+            else:
+                print(f"{key}: {value}")
+                
+                
         create_visualization(data, manager, routing, solution, results)
         print("Visualization created successfully")
     

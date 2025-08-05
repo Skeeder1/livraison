@@ -42,11 +42,8 @@ def solve_vrp(data):
         pickup = current_num + 1
         data['locations'].append(data['locations'][h])
         data['locations'].append(data['locations'][h])
-        # Corrected hub logic:
-        # - deposit node: vehicle drops off items -> positive demand (increases load)
-        # - pickup node: vehicle picks up items -> negative demand (decreases load)
-        data['demands'].append(hub_capacity)  # Deposit: increase vehicle load
-        data['demands'].append(-hub_capacity)  # Pickup: decrease vehicle load
+        data['demands'].append(-hub_capacity)
+        data['demands'].append(hub_capacity)
         data['time_windows'].append(data['time_windows'][h])
         data['time_windows'].append(data['time_windows'][h])
         data['hub_deposits'].append(deposit)
@@ -258,9 +255,9 @@ def solve_vrp(data):
         routing.solver().Add(dummy_time <= time_dimension.CumulVar(pickup_index))
 
     # Objective function
-    print("time_dimension", time_evaluator_index , " n/ distance_evaluator_index", distance_evaluator_index)
+    #print("time_dimension", time_evaluator_index , " distance_evaluator_index", distance_evaluator_index)
     objectif = time_evaluator_index  + distance_evaluator_index
-    routing.SetArcCostEvaluatorOfAllVehicles(time_evaluator_index)
+    routing.SetArcCostEvaluatorOfAllVehicles(distance_evaluator_index)
 
 
     # Search parameters
