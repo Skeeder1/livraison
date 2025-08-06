@@ -9,28 +9,32 @@ class Config:
     DEPOT_POSITION = (0.0, 0.0)  # Fixed depot position
     POSITION_RANGE_MIN = -5.0  # Min value for random positions (lat/long)
     POSITION_RANGE_MAX = 5.0  # Max value for random positions
-    SPEED_FACTOR = 10.0  # Factor to convert distance to time
+    
+    # Time calculation parameters
+    DISTANCE_TO_TIME_FACTOR = 600.0  # 1 unit of distance = 600 seconds (10 minutes) - Plus réaliste pour VRP
+    SERVICE_TIME_PER_UNIT = 60  # 60 seconds per demand unit for service time
 
     # Problem size parameters (these will be modified by stats.py)
     NUM_CUSTOMERS = 45
     NUM_VEHICLES = 3
     NUM_HUBS = 1
-
+    NUM_UNLOAD_DEPOTS = 10  # Number  of unload depots for reloads at depot
+    
     # Capacity settings
     VEHICLE_CAPACITY_MIN = 10.0
     VEHICLE_CAPACITY_MAX = 10.0
     HUB_LOAD_LIMIT = 5.0
 
-    # Time windows
+    # Time windows (en secondes)
     TW_START_MIN = 0
     TW_START_MAX = 0
-    TW_END_MIN = 200000
-    TW_END_MAX = 200000
+    TW_END_MIN = 86400  # 24 heures en secondes
+    TW_END_MAX = 86400
 
-    # Vehicle shifts
+    # Vehicle shifts (en secondes)
     START_TIME_MIN = 0
     START_TIME_MAX = 0
-    END_TIME_MIN = 200000
+    END_TIME_MIN = 86400  # 24 heures en secondes
     END_TIME_MAX = 200000
 
     # Analysis parameters

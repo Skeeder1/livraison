@@ -47,7 +47,8 @@ def create_toy_data(data_dir: str | None = None) -> None:
 
     # Compute matrices
     distance_matrix = compute_distance_matrix(locations)
-    time_matrix = distance_matrix * Config.SPEED_FACTOR
+    # Nouveau calcul du temps : distance * DISTANCE_TO_TIME_FACTOR
+    time_matrix = distance_matrix * Config.DISTANCE_TO_TIME_FACTOR
 
     # Toy colis
     colis_data = {

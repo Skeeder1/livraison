@@ -24,7 +24,7 @@ def setup_data_extensions(data):
     reload_group = [data['depot']]
 
     # Add unload depots for reloads at depot
-    num_unload_depots = 10
+    config.num_unload_depots = 10
     data['unload_depots'] = []
     current_num = len(data['locations'])
     max_vehicle_capacity = max(vehicle_capacities) if vehicle_capacities else 0
@@ -122,9 +122,11 @@ def create_evaluator_functions(data, base_node, reload_group):
         return int(data['distance_matrix'][b_from, b_to])
 
     def get_travel_time(from_node, to_node):
+        # Calcul dynamique : distance * facteur de conversion
         b_from = base_node[from_node]
         b_to = base_node[to_node]
-        return int(data['time_matrix'][b_from, b_to])
+        distance = data['distance_matrix'][b_from, b_to]
+        return int(distance * Config.DISTANCE_TO_TIME_FACTOR)
 
     def create_distance_evaluator(data):
         def distance_evaluator(manager, from_index, to_index):
@@ -147,7 +149,8 @@ def create_evaluator_functions(data, base_node, reload_group):
         return demand_evaluator
 
     def service_time(data, node):
-        return abs(data['demands'][node]) * data['time_per_demand_unit']
+        # Utiliser la configuration centralisée pour le temps de service
+        return abs(data['demands'][node]) * Config.SERVICE_TIME_PER_UNIT
 
     def create_time_evaluator(data):
         def time_evaluator(manager, from_index, to_index):
