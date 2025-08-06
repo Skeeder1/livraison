@@ -45,12 +45,16 @@ def create_visualization(data, manager, routing, solution, results, output_file=
 
     # Helper functions
     def get_travel_time(from_node, to_node):
+        # Calcul dynamique : distance * facteur de conversion
         b_from = base_node[from_node]
         b_to = base_node[to_node]
-        return int(data['time_matrix'][b_from, b_to])
+        distance = data['distance_matrix'][b_from, b_to]
+        from optimizer.config import Config
+        return int(distance * Config.DISTANCE_TO_TIME_FACTOR)
 
     def service_time(node):
-        return abs(data['demands'][node]) * data['time_per_demand_unit']
+        from optimizer.config import Config
+        return abs(data['demands'][node]) * Config.SERVICE_TIME_PER_UNIT
 
     # Compute slacks
     time_dimension = routing.GetDimensionOrDie('Time')

@@ -26,6 +26,21 @@ class Colors:
     BG_CYAN = '\033[106m'
 
 
+def format_time(seconds):
+    """Convertit les secondes en format lisible (HH:MM:SS)"""
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    elif seconds < 3600:
+        minutes = seconds // 60
+        secs = seconds % 60
+        return f"{minutes:.0f}m{secs:.0f}s"
+    else:
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        return f"{hours:.0f}h{minutes:.0f}m{secs:.0f}s"
+
+
 def display_detailed_results(data, routes, estimated_times, current_loads, remaining_charges, 
                            total_distance, total_tardiness, activated_hubs, load_imbalance_percentage, 
                            final_loads, calc_time):
@@ -38,7 +53,7 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
     :param current_loads: Charges actuelles des véhicules
     :param remaining_charges: Capacités restantes des véhicules
     :param total_distance: Distance totale parcourue
-    :param total_tardiness: Retard total en minutes
+    :param total_tardiness: Retard total en secondes
     :param activated_hubs: Set des hubs activés
     :param load_imbalance_percentage: Pourcentage de déséquilibre de charge
     :param final_loads: Charges finales de chaque véhicule
@@ -77,21 +92,21 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
                 node_type = f"{Colors.GREEN}👤 Client {node}{Colors.RESET}"
                 demand = data['demands'][node]
                 tw_start, tw_end = data['time_windows'][node]
-                print(f"      {Colors.WHITE}Étape {i+1:2d}:{Colors.RESET} {node_type:<25} | {Colors.YELLOW}Arrivée: {time:3d}min{Colors.RESET} | {Colors.CYAN}Charge: {load:2d}/{vehicle_capacity}{Colors.RESET} | {Colors.MAGENTA}Capacité restante: {remain:2d}{Colors.RESET}")
+                print(f"      {Colors.WHITE}Étape {i+1:2d}:{Colors.RESET} {node_type:<25} | {Colors.YELLOW}Arrivée: {format_time(time):<8}{Colors.RESET} | {Colors.CYAN}Charge: {load:2d}/{vehicle_capacity}{Colors.RESET} | {Colors.MAGENTA}Capacité restante: {remain:2d}{Colors.RESET}")
                 continue
             elif node > data['num_customers']:
                 node_type = f"{Colors.MAGENTA}🔄 DÉPÔT {node - data['num_customers']}{Colors.RESET}"
             else:
                 node_type = f"{Colors.WHITE}? Nœud {node}{Colors.RESET}"
             
-            print(f"      {Colors.WHITE}Étape {i+1:2d}:{Colors.RESET} {node_type:<25} | {Colors.YELLOW}Arrivée: {time:3d}min{Colors.RESET} | {Colors.CYAN}Charge: {load:2d}/{vehicle_capacity}{Colors.RESET} | {Colors.MAGENTA}Capacité restante: {remain:2d}{Colors.RESET}")
+            print(f"      {Colors.WHITE}Étape {i+1:2d}:{Colors.RESET} {node_type:<25} | {Colors.YELLOW}Arrivée: {format_time(time):<8}{Colors.RESET} | {Colors.CYAN}Charge: {load:2d}/{vehicle_capacity}{Colors.RESET} | {Colors.MAGENTA}Capacité restante: {remain:2d}{Colors.RESET}")
         
         # Statistiques du véhicule
         total_delivery = loads[0] - loads[-1] if loads else 0
         duration = times[-1] - times[0] if len(times) >= 2 else 0
         print(f"\n   {Colors.BOLD}{Colors.GREEN}📊 STATISTIQUES:{Colors.RESET}")
         print(f"      {Colors.CYAN}Total livré           :{Colors.RESET} {Colors.GREEN}{total_delivery}{Colors.RESET} unités")
-        print(f"      {Colors.CYAN}Durée totale          :{Colors.RESET} {Colors.YELLOW}{duration}{Colors.RESET} minutes")
+        print(f"      {Colors.CYAN}Durée totale          :{Colors.RESET} {Colors.YELLOW}{format_time(duration)}{Colors.RESET}")
         print(f"      {Colors.CYAN}Charge finale         :{Colors.RESET} {Colors.BLUE}{loads[-1] if loads else 0}{Colors.RESET}")
         
     print(f"\n{Colors.BOLD}{Colors.CYAN}{'='*80}")
@@ -101,7 +116,7 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
     # Affichage des informations générales
     print(f"\n{Colors.BOLD}{Colors.RED}📈 INDICATEURS GLOBAUX:{Colors.RESET}")
     print(f"   {Colors.CYAN}Distance totale           :{Colors.RESET} {Colors.YELLOW}{total_distance}{Colors.RESET} unités")
-    print(f"   {Colors.CYAN}Retard total              :{Colors.RESET} {Colors.RED if total_tardiness > 0 else Colors.GREEN}{total_tardiness}{Colors.RESET} minutes")
+    print(f"   {Colors.CYAN}Retard total              :{Colors.RESET} {Colors.RED if total_tardiness > 0 else Colors.GREEN}{format_time(total_tardiness)}{Colors.RESET}")
     print(f"   {Colors.CYAN}Hubs activés              :{Colors.RESET} {Colors.MAGENTA}{len(activated_hubs)}{Colors.RESET}")
     print(f"   {Colors.CYAN}Déséquilibre de charge    :{Colors.RESET} {Colors.RED if load_imbalance_percentage > 150 else Colors.YELLOW if load_imbalance_percentage > 110 else Colors.GREEN}{load_imbalance_percentage}%{Colors.RESET}")
     print(f"   {Colors.CYAN}Temps de calcul           :{Colors.RESET} {Colors.BLUE}{calc_time}s{Colors.RESET}")
@@ -330,7 +345,7 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
         },
         'indicators': {
             'total_distance': total_distance,           # Distance totale parcourue
-            'total_tardiness_minutes': total_tardiness, # Retard total en minutes
+            'total_tardiness_minutes': total_tardiness, # Retard total en secondes
             'activated_hubs': len(activated_hubs),      # Nombre de hubs utilisés
             'load_repartition': load_repartition,          # déséquilibre de charge en pourcentage (différence relative max-min)
             'load_imbalance_percentage': load_imbalance_percentage,

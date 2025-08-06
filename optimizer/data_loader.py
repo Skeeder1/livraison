@@ -52,8 +52,8 @@ def load_data(data_dir: str) -> Dict[str, Any]:
         demands[1 + i] = colis.iloc[i]['volume']
     data['demands'] = demands
 
-    # Time windows: large for depot/hubs, specific for customers
-    time_windows = [(0, 1440)] * data['num_nodes']  # 24h in minutes
+    # Time windows: large for depot/hubs, specific for customers (en secondes)
+    time_windows = [(0, 86400)] * data['num_nodes']  # 24h en secondes
     for i in range(data['num_customers']):
         time_windows[1 + i] = (colis.iloc[i]['tw_start'], colis.iloc[i]['tw_end'])
     data['time_windows'] = time_windows
@@ -63,5 +63,12 @@ def load_data(data_dir: str) -> Dict[str, Any]:
     data['num_vehicles'] = len(livreurs)
     data['start_times'] = livreurs['start_time'].tolist()
     data['end_times'] = livreurs['end_time'].tolist()
+    
+    # Time-related parameters (centralized in Config)
+    from .config import Config
+    data['time_per_demand_unit'] = Config.SERVICE_TIME_PER_UNIT
+    data['distance_to_time_factor'] = Config.DISTANCE_TO_TIME_FACTOR  # Facteur de conversion distance->temps
+    data['vehicle_max_time'] = Config.END_TIME_MAX
+    data['vehicle_max_distance'] = 100000  # Large value for distance penalties
 
     return data
