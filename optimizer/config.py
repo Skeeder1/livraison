@@ -38,7 +38,6 @@ class Config:
     END_TIME_MAX = 200000
 
     # Analysis parameters
-    MAX_TIME_LIMIT = 10  # Maximum time to try finding a solution (seconds)
     TIME_INCREMENT = 10   # Time increment for solution attempts (seconds)
 
     @classmethod

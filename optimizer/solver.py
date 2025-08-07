@@ -24,12 +24,11 @@ def setup_data_extensions(data):
     reload_group = [data['depot']]
 
     # Add unload depots for reloads at depot
-    config.num_unload_depots = 10
     data['unload_depots'] = []
     current_num = len(data['locations'])
     max_vehicle_capacity = max(vehicle_capacities) if vehicle_capacities else 0
     
-    for _ in range(num_unload_depots):
+    for _ in range(Config.NUM_UNLOAD_DEPOTS):
         data['locations'].append(data['locations'][data['depot']])
         data['demands'].append(-max_vehicle_capacity)
         data['time_windows'].append((0, data['vehicle_max_time']))
@@ -369,7 +368,7 @@ def configure_search_parameters(data):
     search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
     search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     
-    time_limit = data.get('time_limit', Config.MAX_TIME_LIMIT)
+    time_limit = data.get('time_limit', Config.TIME_TO_SOLVE)
     search_parameters.time_limit.FromSeconds(time_limit)
     
     return search_parameters
