@@ -17,7 +17,7 @@ class Config:
     # Problem size parameters (these will be modified by stats.py)
     NUM_CUSTOMERS = 45
     NUM_VEHICLES = 3
-    NUM_HUBS = 1
+    NUM_HUBS = 2
     NUM_UNLOAD_DEPOTS = 10  # Number  of unload depots for reloads at depot
     
     # Capacity settings

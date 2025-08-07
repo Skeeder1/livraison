@@ -94,8 +94,11 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
                 tw_start, tw_end = data['time_windows'][node]
                 print(f"      {Colors.WHITE}Étape {i+1:2d}:{Colors.RESET} {node_type:<25} | {Colors.YELLOW}Arrivée: {format_time(time):<8}{Colors.RESET} | {Colors.CYAN}Charge: {load:2d}/{vehicle_capacity}{Colors.RESET} | {Colors.MAGENTA}Node: {node}{Colors.RESET}")
                 continue
-            elif node > data['num_customers']:
+            elif data['num_customers'] + Config.NUM_UNLOAD_DEPOTS > node > data['num_customers']:
                 node_type = f"{Colors.MAGENTA}🔄 DÉPÔT {node - data['num_customers']}{Colors.RESET}"
+
+            elif node >= data['num_customers'] + Config.NUM_UNLOAD_DEPOTS:
+                node_type = f"{Colors.MAGENTA}🌐 HUB   {node - data['num_customers']}{Colors.RESET}"
             else:
                 node_type = f"{Colors.WHITE}? Nœud {node}{Colors.RESET}"
             
@@ -277,7 +280,7 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
         }
     }
 
-    for v in range(clean_data['vehicles']['real']):
+    for v in range(data['num_vehicles']):
         # Commencer au point de départ du véhicule
         index = routing.Start(v)
         route = []  # Séquence des nœuds visités
@@ -299,12 +302,13 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
                 vehicle_capacity = data['vehicle_capacities'][v]
             else:
                 vehicle_capacity = 0  # Véhicule dummy, capacité = 0
+            reverse_load = solution.Value(capacity_dimension.CumulVar(index))
             
-            if node == 0 and count == 0:
-                load_value = vehicle_capacity - (solution.Value(capacity_dimension.CumulVar(index)))
+            if node == clean_data['nodes']['depot'] and count == 0:
+                load_value = vehicle_capacity - reverse_load
                 count += 1
             else:
-                load_value = vehicle_capacity - (solution.Value(capacity_dimension.CumulVar(index)) + 1)
+                load_value = vehicle_capacity - (reverse_load + 1)
 
             loads.append(load_value)
             index = solution.Value(routing.NextVar(index))  # Passer au nœud suivant
