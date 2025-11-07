@@ -286,37 +286,44 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
         route = []  # Séquence des nœuds visités
         times = []  # Temps d'arrivée à chaque nœud
         loads = []  # Charge cumulée transportée à chaque nœud
-        count = 0
+
+        # Vérifier si l'index du véhicule existe dans vehicle_capacities
+        if v < len(data['vehicle_capacities']):
+            vehicle_capacity = data['vehicle_capacities'][v]
+        else:
+            vehicle_capacity = 0  # Véhicule dummy, capacité = 0
+
         # Parcourir toute la route du véhicule
+        # Calculer la charge en ordre décroissant: commence à capacity et diminue quand on livre
+        current_charge = vehicle_capacity  # Commence plein
+
         while not routing.IsEnd(index):
             node = manager.IndexToNode(index)  # Convertir l'index en numéro de nœud
             route.append(node)
             # Temps d'arrivée au nœud (dimension temporelle)
             times.append(solution.Value(time_dimension.CumulVar(index)))
-            
-            # Charge cumulée transportée au nœud (dimension capacité)
-            # Dans OR-Tools, CumulVar représente la charge totale collectée/transportée
-            # Charge du véhicule
-            # Vérifier si l'index du véhicule existe dans vehicle_capacities
-            if v < len(data['vehicle_capacities']):
-                vehicle_capacity = data['vehicle_capacities'][v]
-            else:
-                vehicle_capacity = 0  # Véhicule dummy, capacité = 0
-            reverse_load = solution.Value(capacity_dimension.CumulVar(index))
-            
-            if node == clean_data['nodes']['depot'] and count == 0:
-                load_value = vehicle_capacity - reverse_load
-                count += 1
-            else:
-                load_value = vehicle_capacity - (reverse_load + 1)
 
+            # Mettre à jour la charge basée sur la demande du nœud:
+            # - Les clients réduisent la charge (demand > 0)
+            # - Les unload depots la remettent à zéro/recharge (demand < 0)
+            node_demand = data['demands'][node]
+
+            if node_demand > 0:  # Client: on vient de livrer, charge diminue
+                current_charge -= node_demand
+            elif node_demand < 0 and node != 0:  # Unload depot: recharge complète
+                current_charge = vehicle_capacity
+
+            # Enregistrer la charge APRÈS avoir traité le nœud
+            load_value = max(0, min(current_charge, vehicle_capacity))
             loads.append(load_value)
+
             index = solution.Value(routing.NextVar(index))  # Passer au nœud suivant
-        
+
         # Ajouter le nœud final (retour au dépôt)
-        route.append(manager.IndexToNode(index))
+        final_node = manager.IndexToNode(index)
+        route.append(final_node)
         times.append(solution.Value(time_dimension.CumulVar(index)))
-        loads.append(loads[-1])
+        loads.append(max(0, min(current_charge, vehicle_capacity)))  # Charge au retour
         
         # Calculer la capacité restante à chaque étape
         # Capacité restante = Capacité totale du véhicule - Charge cumulée transportée

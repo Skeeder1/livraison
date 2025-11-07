@@ -7,6 +7,10 @@
     <p>Total Delay: <span id="delay"></span></p>
     <p>Hub Transfers: <span id="transfers"></span></p>
     <p>Avg Capacity: <span id="avg-capacity"></span></p>
+    <p style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ccc; font-size: 12px;">
+        <strong>Vehicle Status:</strong><br>
+        <span id="phase-info" style="font-family: monospace; font-size: 11px;"></span>
+    </p>
 </div>
 <div id="controls">
     <input type="range" min="0" max="{max_time}" value="0" step="1" id="time-slider" aria-label="Time Slider">
@@ -17,6 +21,10 @@
         <option value="1">x1</option>
         <option value="2">x2</option>
         <option value="5">x5</option>
+        <option value="20">x20</option>
+        <option value="50">x50</option>
+        <option value="100">x100</option>
+        <option value="500">x500</option>
     </select>
     <button id="export" aria-label="Export">Export PNG</button>
 </div>
