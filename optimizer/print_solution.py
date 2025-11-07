@@ -72,40 +72,21 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     results['per_livreur']['slacks'] = slacks_list
 
     # Compute cumulative loads for visualization (use real solver data)
+    # current_loads from postprocessor contains the actual load carried at each step
     cumulative_loads = []
-    # Utiliser seulement les vrais véhicules, pas les dummy vehicles
     num_real_vehicles = len(data['vehicle_capacities'])
-    
-    # Calculer pour tous les véhicules (réels + dummy)
+
     for v in range(data['num_vehicles']):
         if v < num_real_vehicles:
-            # Véhicule réel
-            route = results['per_livreur']['routes'][v]
-            vehicle_capacity = data['vehicle_capacities'][v]
-            
-    # Use the correctly computed current_loads from postprocessor
-    # current_loads now contains the actual load carried, not remaining capacity
-    cumulative_loads = []
-    
-    # Calculer pour tous les véhicules (réels + dummy)
-    for v in range(data['num_vehicles']):
-        if v < num_real_vehicles:
-            # Véhicule réel - utiliser les données du postprocessor
-            current_loads = results['per_livreur']['current_loads'][v]  # Maintenant c'est la charge transportée
-            vehicle_capacity = data['vehicle_capacities'][v]
-            
-            # Convertir charge transportée en capacité restante pour la visualisation
-            remaining_charges = []
-            for load in current_loads:
-                remaining_capacity = vehicle_capacity - load
-                remaining_charges.append(remaining_capacity)
-            cumulative_loads.append(current_loads)  # Utiliser les charges transportées
+            # Véhicule réel - utiliser les charges transportées du postprocessor
+            loads_data = results['per_livreur']['current_loads'][v]
+            cumulative_loads.append(loads_data)
         else:
             # Véhicule dummy - capacité toujours 0
             route = results['per_livreur']['routes'][v]
             dummy_loads = [0] * len(route)
             cumulative_loads.append(dummy_loads)
-    
+
     results['per_livreur']['cumulative_loads'] = cumulative_loads
 
     # Compute transfers
@@ -128,8 +109,8 @@ def create_visualization(data, manager, routing, solution, results, output_file=
             transfers.append({'hub': hub_start + i, 'deposit_v': deposit_v, 'deposit_t': deposit_t, 'pickup_v': pickup_v, 'pickup_t': pickup_t})
     results['transfers'] = transfers
 
-    # Max time
-    max_time = max(max(times) for times in results['per_livreur']['estimated_times'] if times)
+    # Max time (only from real vehicles, not dummy vehicles)
+    max_time = max(max(results['per_livreur']['estimated_times'][v]) for v in range(num_real_vehicles) if results['per_livreur']['estimated_times'][v])
 
     # Heatmap data
     time_spent = np.zeros(len(data['locations']))
@@ -157,20 +138,52 @@ def create_visualization(data, manager, routing, solution, results, output_file=
         folium.PolyLine(route_locs, color=colors_hex[v], weight=5, opacity=0.7).add_to(group)
         group.add_to(m)
 
-    # Markers
+    # Markers - Assign customer color based on their delivery vehicle
     customers_group = folium.FeatureGroup(name='Customers')
     for i in range(1, 1 + data['num_customers']):
         loc = data['locations'][i]
         demand = data['demands'][i]
         tw = data['time_windows'][i]
-        folium.Marker(loc, icon=folium.Icon(icon='home', prefix='fa', color='blue'), popup=f'Customer {i}<br>Demand: {demand}<br>TW: {tw[0]}-{tw[1]}', tooltip=f'Customer {i}').add_to(customers_group)
+
+        # Find which vehicle delivers to this customer
+        customer_vehicle = None
+        for v in range(num_real_vehicles):
+            if i in results['per_livreur']['routes'][v]:
+                customer_vehicle = v
+                break
+
+        # Use vehicle color, or gray if not assigned
+        if customer_vehicle is not None:
+            marker_color = colors_hex[customer_vehicle]
+            vehicle_label = f'Vehicle {customer_vehicle + 1}'
+        else:
+            marker_color = '#808080'  # Gray for unassigned
+            vehicle_label = 'Not Assigned'
+
+        # Use CircleMarker to support custom hex colors
+        folium.CircleMarker(
+            loc,
+            radius=7,
+            popup=f'Customer {i}<br>{vehicle_label}<br>Demand: {demand}<br>TW: {tw[0]}-{tw[1]}',
+            tooltip=f'Customer {i}',
+            color=marker_color,
+            fill=True,
+            fillColor=marker_color,
+            fillOpacity=0.8,
+            weight=2
+        ).add_to(customers_group)
     customers_group.add_to(m)
 
     hubs_group = folium.FeatureGroup(name='Hubs')
     for i in range(data['num_hubs']):
         h = hub_start + i
         loc = data['locations'][h]
-        folium.CircleMarker(loc, radius=10, color='green', fill=True, fill_color='green', popup=f'Hub {i+1}', tooltip=f'Hub {i+1}').add_to(hubs_group)
+        folium.Marker(
+            loc,
+            icon=folium.Icon(icon='warehouse', prefix='fa', color='green'),
+            popup=f'Hub {i+1}',
+            tooltip=f'Hub {i+1}'
+        ).add_to(hubs_group)
     hubs_group.add_to(m)
 
     depot_group = folium.FeatureGroup(name='Depot')
@@ -212,7 +225,7 @@ def create_visualization(data, manager, routing, solution, results, output_file=
 
     # CSS
     css_path = os.path.join(os.path.dirname(__file__), 'visualization', 'styles.css')
-    with open(css_path, 'r') as f:
+    with open(css_path, 'r', encoding='utf-8') as f:
         style_content = f.read()
     css = '''
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
@@ -224,7 +237,7 @@ def create_visualization(data, manager, routing, solution, results, output_file=
 
     # HTML
     html_path = os.path.join(os.path.dirname(__file__), 'visualization', 'interface.html')
-    with open(html_path, 'r') as f:
+    with open(html_path, 'r', encoding='utf-8') as f:
         html_template = f.read()
     html = html_template.format(max_time=max_time, baseline_distance=data.get('baseline_distance', 0))
     m.get_root().html.add_child(folium.Element(html))
@@ -232,7 +245,7 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     # JS
     map_id = m._id
     js_path = os.path.join(os.path.dirname(__file__), 'visualization', 'script.js')
-    with open(js_path, 'r') as f:
+    with open(js_path, 'r', encoding='utf-8') as f:
         script_content = f.read()
     script = '''
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
