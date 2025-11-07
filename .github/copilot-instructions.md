@@ -19,10 +19,6 @@ See `/CLAUDE.md` for detailed autonomous rules and decision-making flow.
 
 ## ⚠️ RÈGLES CRITIQUES - À LIRE EN PREMIER
 
-### Docker
-**❌ NE JAMAIS UTILISER DOCKER** - Docker pose des problèmes sur cet environnement.
-**✅ TOUJOURS** utiliser PostgreSQL et Redis installés localement sur Windows.
-
 ### Tests
 **✅ TOUJOURS** placer les fichiers de test dans le dossier `tests/`
 - **Interdiction** : Créer des fichiers `test_*.py` à la racine du projet
@@ -341,7 +337,6 @@ $env:PGPASSWORD="emailsaas_pass"; psql -U emailsaas_user -h localhost -d emailsa
 ### Lors de l'ajout de dépendances
 - ✅ Backend : Ajouter dans `requirements.txt`
 - ✅ Frontend : Ajouter avec `npm install`
-- ❌ NE PAS créer de Dockerfile ou docker-compose
 
 ---
 
@@ -381,24 +376,23 @@ $env:PGPASSWORD="emailsaas_pass"; psql -U emailsaas_user -h localhost -d emailsa
 ## 📝 Notes de développement
 
 ### Historique des problèmes résolus
-1. **28 oct 2025** - Docker désactivé (bugs Windows)
-2. **28 oct 2025** - Incohérence identifiants DB corrigée
-3. **28 oct 2025** - Ajout de timeouts partout (10-30s)
-4. **28 oct 2025** - Fix configuration pg_hba.conf pour localhost
-5. **28 oct 2025** - Scripts de diagnostic créés (check_quick, check_postgres)
-6. **28 oct 2025** - Tous les scripts rendus autonomes (pause retirés)
-7. **28 oct 2025** - Découverte dossier données PostgreSQL : C:\pgdata18
-8. **28 oct 2025** - Port 5432 occupé par Python - résolu
-9. **28 oct 2025** - PostgreSQL démarré SANS droits admin (pg_ctl direct)
-10. **28 oct 2025** - Migrations corrigées (suppression migration 003 invalide)
-11. **28 oct 2025** - Script `launch_app.ps1` créé - lancement complet autonome
-12. **28 oct 2025** - Intégration complète Campagne Mairie (MairieService + migrations)
-13. **28 oct 2025** - Fix CORS pour frontend sur port 5173
-14. **29 oct 2025** - Fix DNS : `geo.gouv.fr` → `geo.api.gouv.fr`
-15. **29 oct 2025** - Fix Enum : strings → `CampaignStatus.SCHEDULED`
-16. **29 oct 2025** - Fix Pydantic v2 : `Optional[T]` → `Optional[T] = None`
-17. **29 oct 2025** - Tests end-to-end complets : 6/6 passés ✅
-18. **29 oct 2025** - Validation recherche mairies Angers : 5 emails récupérés
+1. **28 oct 2025** - Incohérence identifiants DB corrigée
+2. **28 oct 2025** - Ajout de timeouts partout (10-30s)
+3. **28 oct 2025** - Fix configuration pg_hba.conf pour localhost
+4. **28 oct 2025** - Scripts de diagnostic créés (check_quick, check_postgres)
+5. **28 oct 2025** - Tous les scripts rendus autonomes (pause retirés)
+6. **28 oct 2025** - Découverte dossier données PostgreSQL : C:\pgdata18
+7. **28 oct 2025** - Port 5432 occupé par Python - résolu
+8. **28 oct 2025** - PostgreSQL démarré SANS droits admin (pg_ctl direct)
+9. **28 oct 2025** - Migrations corrigées (suppression migration 003 invalide)
+10. **28 oct 2025** - Script `launch_app.ps1` créé - lancement complet autonome
+11. **28 oct 2025** - Intégration complète Campagne Mairie (MairieService + migrations)
+12. **28 oct 2025** - Fix CORS pour frontend sur port 5173
+13. **29 oct 2025** - Fix DNS : `geo.gouv.fr` → `geo.api.gouv.fr`
+14. **29 oct 2025** - Fix Enum : strings → `CampaignStatus.SCHEDULED`
+15. **29 oct 2025** - Fix Pydantic v2 : `Optional[T]` → `Optional[T] = None`
+16. **29 oct 2025** - Tests end-to-end complets : 6/6 passés ✅
+17. **29 oct 2025** - Validation recherche mairies Angers : 5 emails récupérés
 
 ### CORS - Résolution erreur "blocked by CORS policy"
 **Symptôme** : `Access to XMLHttpRequest at 'http://localhost:8000/v1/campaigns' from origin 'http://localhost:5173' has been blocked by CORS policy`
@@ -624,7 +618,6 @@ GEO_API_BASE = "https://geo.api.gouv.fr"  # Fonctionne
 
 ## 🚨 Checklist avant commit
 
-- [ ] Pas de références Docker ajoutées
 - [ ] Identifiants DB cohérents (`emailsaas_user:emailsaas_pass`)
 - [ ] Timeouts ajoutés si connexion réseau/DB
 - [ ] Scripts PowerShell testés sur Windows
