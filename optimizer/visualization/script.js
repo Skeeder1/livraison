@@ -184,11 +184,20 @@ window.addEventListener('load', function() {
             // Récréer le HTML complètement pour éviter les problèmes de regex
             var newIconHtml = '<div style="position: relative;"><div style="position: absolute; top: -50px; left: -20px; background: white; padding: 3px 5px; border: 1px solid #999; border-radius: 3px; width: 110px; font-size: 11px; text-align: center;"><div style="color: #333; font-weight: bold; margin-bottom: 2px;">' + phase_label + '</div><div>Charge: <span class="charge-text">' + Math.round(current_load) + '/' + cap + '</span></div><div class="progress" style="background: ' + progress_color + '; width: 100%; height: 6px; border-radius: 3px; margin-top: 2px;"></div></div><i class="fas fa-bicycle" style="color:' + phase_color + '; font-size:24px; text-shadow: 1px 1px 2px rgba(0,0,0,0.3);"></i></div>';
             vehicleMarkers[v].setIcon(L.divIcon({html: newIconHtml, iconSize: [30,30]}));
-            if (from >= 1 && from <= jsData.num_customers && t >= time_to) {
-                delivered++;
-                var tw_end = jsData.time_windows[from][1];
-                total_delay += Math.max(0, time_from - tw_end);
+
+            // Count all customers delivered so far on this vehicle's route
+            for (var j = 1; j < route.length; j++) {
+                var customer_node = route[j];
+                var customer_arrival_time = times[j];
+
+                // Check if it's a customer node and we've reached it
+                if (customer_node >= 1 && customer_node <= jsData.num_customers && t >= customer_arrival_time) {
+                    delivered++;
+                    var tw_end = jsData.time_windows[customer_node][1];
+                    total_delay += Math.max(0, customer_arrival_time - tw_end);
+                }
             }
+
             total_load += current_load;
             total_cap += capacity;
         }
