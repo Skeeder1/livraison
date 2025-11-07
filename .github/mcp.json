@@ -1,0 +1,47 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ]
+    },
+    "claude-context": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@zilliz/claude-context-mcp@latest"
+      ],
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+        "MILVUS_ADDRESS": "${ZILLIZ_CLUSTER_URL}",
+        "MILVUS_TOKEN": "${MILVUS_TOKEN}",
+        "EMBEDDING_PROVIDER": "${EMBEDDING_PROVIDER}"
+      }
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    },
+    "railway": {
+      "command": "npx",
+      "args": ["-y", "@jasontanswe/railway-mcp"],
+      "env": {
+        "RAILWAY_API_TOKEN": "f34f7dfd-97ca-4c01-be26-18ffe99428e6"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@context7/mcp-server"],
+      "env": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+      }
+    }
+  }
+}
