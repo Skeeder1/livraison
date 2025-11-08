@@ -20,9 +20,9 @@ os.environ['GLOG_v'] = '3'  # Verbose level; increase if needed
 # Import project modules
 from optimizer.data_loader import load_data
 from optimizer.preprocessor import preprocess
-from optimizer.solver import solve_vrp
+from optimizer.solver import solve_vrp, solve_vrp_with_optimal_hubs
 from optimizer.postprocessor import get_results
-from optimizer.print_solution import create_visualization 
+from optimizer.print_solution import create_visualization
 from optimizer.create_toy_data import create_toy_data
 from optimizer.config import Config
 
@@ -35,15 +35,17 @@ def main():
     
     print("preprocessing data")
     data = preprocess(data)
-    
+
     print(f"begining VRP solving with {data['num_nodes']} nodes and {data['num_vehicles']} vehicles and {data['num_hubs']} hubs")
-    manager, routing, solution = solve_vrp(data)
-    
     print(f"Baseline distance: {data['baseline_distance']:.2f}")
+
+    # Utiliser la nouvelle fonction qui compare avec/sans hubs
+    manager, routing, solution, results, hubs_used = solve_vrp_with_optimal_hubs(data)
+
     if solution is None:
         print("No solution found")
     else:
-        results = get_results(data, manager, routing, solution)
+        # Les résultats sont déjà calculés par solve_vrp_with_optimal_hubs
         for key, value in results.items():
             if isinstance(value, dict):
                 print(f"{key}:")
@@ -51,9 +53,18 @@ def main():
                     print(f"  {subkey}: {subvalue}")
             else:
                 print(f"{key}: {value}")
-                
-                
-        create_visualization(data, manager, routing, solution, results)
+
+        # Utiliser les données appropriées pour la visualisation
+        if not hubs_used:
+            # Si on a choisi la solution sans hubs, recréer data_no_hubs pour la visualisation
+            import copy
+            data_viz = copy.deepcopy(data)
+            data_viz['num_hubs'] = 0
+            data_viz['hubs'] = []
+        else:
+            data_viz = data
+
+        create_visualization(data_viz, manager, routing, solution, results)
         print("Visualization created successfully")
     
 

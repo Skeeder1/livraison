@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 from typing import List, Tuple
-from config import Config
+from optimizer.config import Config
 
 # Weights - Could be moved to Config if needed
 WEIGHTS_DICT = {

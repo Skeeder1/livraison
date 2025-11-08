@@ -1,7 +1,7 @@
 # optimizer/postprocessor.py
 from ortools.constraint_solver import pywrapcp
 from typing import Dict, Any
-from config import Config
+from optimizer.config import Config
 # Codes couleurs ANSI
 class Colors:
     RESET = '\033[0m'
@@ -305,13 +305,31 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
 
             # Mettre à jour la charge basée sur la demande du nœud:
             # - Les clients réduisent la charge (demand > 0)
-            # - Les unload depots la remettent à zéro/recharge (demand < 0)
+            # - Les hub pickups augmentent la charge (demand > 0)
+            # - Les hub deposits réduisent la charge (demand < 0)
+            # - Les unload depots font recharger complètement (demand < 0)
             node_demand = data['demands'][node]
 
-            if node_demand > 0:  # Client: on vient de livrer, charge diminue
+            # Identify node type using the hub_deposits and hub_pickups lists
+            is_hub_deposit = node in data.get('hub_deposits', [])
+            is_hub_pickup = node in data.get('hub_pickups', [])
+            is_unload_depot = node in data.get('unload_depots', [])
+
+            if is_hub_pickup and node_demand > 0:
+                # At hub pickup: LOAD a package from transfer (increase charge)
+                current_charge += node_demand
+            elif node_demand > 0:
+                # At customer: DELIVER a package (decrease charge)
                 current_charge -= node_demand
-            elif node_demand < 0 and node != 0:  # Unload depot: recharge complète
+            elif is_hub_deposit and node_demand < 0:
+                # At hub deposit: UNLOAD a package for transfer (decrease charge)
+                current_charge -= abs(node_demand)
+            elif is_unload_depot and node_demand < 0:
+                # At unload depot: full recharge
                 current_charge = vehicle_capacity
+            elif node == 0:
+                # At main depot: no charge change
+                pass
 
             # Enregistrer la charge APRÈS avoir traité le nœud
             load_value = max(0, min(current_charge, vehicle_capacity))
@@ -355,9 +373,18 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
     # Temps de calcul (pour l'instant fixé à 0, pourrait être mesuré)
     calc_time = 0
 
+    # Calcul du temps total de livraison (somme des temps de tous les véhicules)
+    # Pour chaque véhicule, le temps de livraison est le dernier temps enregistré (retour au dépôt)
+    # IMPORTANT: Ne compter que les véhicules réels, pas les véhicules dummy créés pour les hubs
+    num_real_vehicles = data.get('num_real_vehicles', Config.NUM_VEHICLES)
+    total_time_all_vehicles = sum(
+        times[-1] if times else 0
+        for times in estimated_times[:num_real_vehicles]
+    )
+
     # Affichage des résultats détaillés
-    display_detailed_results(data, routes, estimated_times, current_loads, remaining_charges, 
-                           total_distance, total_tardiness, activated_hubs, load_imbalance_percentage, 
+    display_detailed_results(data, routes, estimated_times, current_loads, remaining_charges,
+                           total_distance, total_tardiness, activated_hubs, load_imbalance_percentage,
                            final_loads, calc_time)
 
     # Retourner tous les résultats structurés
@@ -374,6 +401,7 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
             'activated_hubs': len(activated_hubs),      # Nombre de hubs utilisés
             'load_repartition': load_repartition,          # déséquilibre de charge en pourcentage (différence relative max-min)
             'load_imbalance_percentage': load_imbalance_percentage,
-            'calc_time': calc_time        # Temps de calcul
+            'calc_time': calc_time,        # Temps de calcul
+            'total_time_all_vehicles': total_time_all_vehicles  # Somme des temps de tous les véhicules (en secondes)
         }
     }
