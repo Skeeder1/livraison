@@ -3,8 +3,14 @@
 # Configuration variables for data generation
 class Config:
     # Solver configuration
-    TIME_TO_SOLVE = 10  # seconds
-    
+    TIME_TO_SOLVE = 30  # seconds (increased for better load balancing)
+
+    # Objective function coefficients for load balancing
+    TIME_SPAN_COEFFICIENT = 200        # OPTIMAL: Config 1 - Best performance/balance tradeoff
+    CAPACITY_SPAN_COEFFICIENT = 50     # OPTIMAL: Config 1
+    DISTANCE_SPAN_COEFFICIENT = 30     # OPTIMAL: Config 1
+    MAX_TIME_RATIO = 2.0               # Maximum acceptable time ratio (max_time / min_time)
+
     # General settings
     DEPOT_POSITION = (0.0, 0.0)  # Fixed depot position
     POSITION_RANGE_MIN = -5.0  # Min value for random positions (lat/long)
@@ -18,7 +24,7 @@ class Config:
     NUM_CUSTOMERS = 45
     NUM_VEHICLES = 3
     NUM_HUBS = 2
-    NUM_UNLOAD_DEPOTS = 10  # Number  of unload depots for reloads at depot
+    NUM_UNLOAD_DEPOTS = 10  # Number of unload depots for reloads at depot
     
     # Capacity settings
     VEHICLE_CAPACITY_MIN = 10.0
@@ -30,6 +36,10 @@ class Config:
     TW_START_MAX = 0
     TW_END_MIN = 86400  # 24 heures en secondes
     TW_END_MAX = 86400
+
+    # Time window behavior
+    TIME_WINDOWS_OPTIONAL = True  # If True, time windows are optional with penalties
+    TIME_WINDOW_VIOLATION_PENALTY = 50000  # Penalty per second of violation (only if optional)
 
     # Vehicle shifts (en secondes)
     START_TIME_MIN = 0

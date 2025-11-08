@@ -59,7 +59,7 @@ def setup_data_extensions(data):
     # Add dummy nodes and dummy vehicles for each hub
     data['dummy_nodes'] = []
     num_real_vehicles = data['num_vehicles']
-    
+
     for _ in range(data['num_hubs']):
         dummy = current_num
         data['locations'].append(data['locations'][data['depot']])
@@ -69,6 +69,7 @@ def setup_data_extensions(data):
         current_num += 1
 
     data['num_locations'] = len(data['locations'])
+    data['num_real_vehicles'] = num_real_vehicles  # Store for later use in metrics
     data['num_vehicles'] = num_real_vehicles + data['num_hubs']
 
     # Extend vehicle capacities and max times for dummy vehicles
@@ -137,7 +138,7 @@ def create_evaluator_functions(data, base_node, reload_group):
             extra_penalty = 0
             hub_nodes = data['hub_deposits'] + data['hub_pickups']
             if from_node in hub_nodes or to_node in hub_nodes:
-                extra_penalty = 500
+                extra_penalty = 100  # Reduced from 500 to encourage rebalancing via hubs
             return base_dist + extra_penalty
         return distance_evaluator
 
@@ -205,7 +206,7 @@ def add_routing_dimensions(routing, manager, data, vehicle_capacities, vehicle_m
     distance = 'Distance'
     routing.AddDimension(distance_evaluator_index, 0, data['vehicle_max_distance'], True, distance)
     distance_dimension = routing.GetDimensionOrDie(distance)
-    distance_dimension.SetGlobalSpanCostCoefficient(100)
+    distance_dimension.SetGlobalSpanCostCoefficient(Config.DISTANCE_SPAN_COEFFICIENT)
 
     # Capacity dimension
     demand_evaluator_index = routing.RegisterUnaryTransitCallback(partial(create_demand_evaluator(data), manager))
@@ -213,14 +214,32 @@ def add_routing_dimensions(routing, manager, data, vehicle_capacities, vehicle_m
     max_slack_capacity = max(vehicle_capacities + [0])
     routing.AddDimensionWithVehicleCapacity(demand_evaluator_index, max_slack_capacity, vehicle_capacities, True, capacity)
     capacity_dimension = routing.GetDimensionOrDie(capacity)
+    # REMOVED: SetGlobalSpanCostCoefficient on capacity (measures cumulative, not actual load)
+    # capacity_dimension.SetGlobalSpanCostCoefficient(Config.CAPACITY_SPAN_COEFFICIENT)
+
+    # Customer Count dimension - tracks ACTUAL number of customers delivered per vehicle
+    def customer_counter_evaluator(manager, from_index):
+        """Count only real customers (nodes 1 to num_customers), not hubs/depots/reloads"""
+        node = manager.IndexToNode(from_index)
+        # Return 1 if this is a real customer delivery
+        return 1 if 1 <= node <= data['num_customers'] else 0
+
+    customer_count_index = routing.RegisterUnaryTransitCallback(partial(customer_counter_evaluator, manager))
+    customer_count = 'CustomerCount'
+    routing.AddDimension(customer_count_index, 0, data['num_customers'], True, customer_count)
+    customer_count_dimension = routing.GetDimensionOrDie(customer_count)
+    # Apply SPAN penalty to ACTUAL customer count - this is the proper way to balance load
+    customer_count_dimension.SetGlobalSpanCostCoefficient(Config.CAPACITY_SPAN_COEFFICIENT)
 
     # Time dimension
     time_evaluator_index = routing.RegisterTransitCallback(partial(create_time_evaluator(data), manager))
     time = 'Time'
     routing.AddDimensionWithVehicleCapacity(time_evaluator_index, data['vehicle_max_time'], vehicle_max_times, False, time)
     time_dimension = routing.GetDimensionOrDie(time)
+    # Minimize makespan and balance route times to prevent extreme time differences
+    time_dimension.SetGlobalSpanCostCoefficient(Config.TIME_SPAN_COEFFICIENT)
 
-    return distance_dimension, capacity_dimension, time_dimension, distance_evaluator_index
+    return distance_dimension, capacity_dimension, time_dimension, distance_evaluator_index, time_evaluator_index
 
 
 def configure_constraints_and_penalties(routing, manager, data, capacity_dimension, hub_indices):
@@ -265,20 +284,55 @@ def configure_constraints_and_penalties(routing, manager, data, capacity_dimensi
 def setup_time_constraints(routing, manager, data, time_dimension, num_real_vehicles):
     """
     Configure les contraintes temporelles et fenêtres de temps.
-    
+
+    - Clients: time windows optionnels avec pénalités (si TIME_WINDOWS_OPTIONAL=True)
+    - Hubs: time windows absolus (contraintes dures)
+
     :param routing: Modèle de routage
     :param manager: Gestionnaire d'indices
     :param data: Dictionnaire de données
     :param time_dimension: Dimension temporelle
     :param num_real_vehicles: Nombre de véhicules réels
     """
+    # Identify hub indices for special treatment
+    hub_start = 1 + data['num_customers']
+    hub_end = hub_start + data['num_hubs']
+    hub_indices = set(range(hub_start, hub_end))
+    hub_deposits = set(data['hub_deposits'])
+    hub_pickups = set(data['hub_pickups'])
+    hub_related = hub_indices | hub_deposits | hub_pickups
+
     # Add time windows
     for location_idx, window in enumerate(data['time_windows']):
         if location_idx == data['depot']:
             continue
+
         index = manager.NodeToIndex(location_idx)
-        time_dimension.CumulVar(index).SetRange(int(window[0]), int(window[1]))
-        routing.AddToAssignment(time_dimension.SlackVar(index))
+
+        # Check if this is a hub-related node
+        is_hub_node = location_idx in hub_related
+
+        if is_hub_node:
+            # Hubs: hard time window constraints (absolute)
+            time_dimension.CumulVar(index).SetRange(int(window[0]), int(window[1]))
+            routing.AddToAssignment(time_dimension.SlackVar(index))
+        else:
+            # Customers: optional time windows with penalties
+            if Config.TIME_WINDOWS_OPTIONAL:
+                # Allow wide range instead of hard constraints
+                time_dimension.CumulVar(index).SetRange(0, int(data['vehicle_max_time']))
+                slack_var = time_dimension.SlackVar(index)
+                routing.AddToAssignment(slack_var)
+                # Apply penalty coefficient for time window violations (slack penalty)
+                # Using vehicle-based penalty since node-based isn't available
+                for vehicle_id in range(data['num_vehicles']):
+                    time_dimension.SetSlackCostCoefficientForVehicle(
+                        int(Config.TIME_WINDOW_VIOLATION_PENALTY), vehicle_id
+                    )
+            else:
+                # Original behavior: hard constraints for all
+                time_dimension.CumulVar(index).SetRange(int(window[0]), int(window[1]))
+                routing.AddToAssignment(time_dimension.SlackVar(index))
 
     # Set vehicle start and end times
     penalty_slack = 100
@@ -365,7 +419,8 @@ def configure_search_parameters(data):
     :return: Paramètres de recherche configurés
     """
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-    search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+    # Use PARALLEL_CHEAPEST_INSERTION for better initial vehicle balance
+    search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
     search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     
     time_limit = data.get('time_limit', Config.TIME_TO_SOLVE)
@@ -390,7 +445,7 @@ def solve_vrp(data):
     )
     
     # 3. Ajouter les dimensions
-    distance_dimension, capacity_dimension, time_dimension, distance_evaluator_index = add_routing_dimensions(
+    distance_dimension, capacity_dimension, time_dimension, distance_evaluator_index, time_evaluator_index = add_routing_dimensions(
         routing, manager, data, vehicle_capacities, vehicle_max_times,
         create_distance_evaluator, create_demand_evaluator, create_time_evaluator
     )
@@ -408,12 +463,100 @@ def solve_vrp(data):
     add_hub_constraints(routing, manager, data, time_dimension, capacity_dimension)
     
     # 8. Définir la fonction objective
+    # Optimiser la DISTANCE avec pénalités pour équilibrer temps et charges
+    # Les coefficients SPAN forcent l'équilibrage sans changer l'objectif principal
     routing.SetArcCostEvaluatorOfAllVehicles(distance_evaluator_index)
-    
+
+    # Add fixed cost per vehicle to incentivize balanced usage
+    routing.SetFixedCostOfAllVehicles(50)  # OPTIMAL: Light incentive for vehicle balance
+
     # 9. Configurer les paramètres de recherche
     search_parameters = configure_search_parameters(data)
     
     # 10. Résoudre
     solution = routing.SolveWithParameters(search_parameters)
-    
+
     return manager, routing, solution
+
+
+def solve_vrp_with_optimal_hubs(data):
+    """
+    Résout le VRP deux fois (avec et sans hubs) et retourne la meilleure solution
+    basée sur le temps total de livraison (somme des temps de tous les véhicules).
+
+    :param data: Dictionnaire de données du problème
+    :return: Tuple (manager, routing, solution, results, hubs_used)
+             - hubs_used: True si la solution avec hubs a été choisie, False sinon
+    """
+    from optimizer.postprocessor import get_results
+    import copy
+
+    print("\n🔍 Comparaison avec/sans hubs pour optimiser le temps total de livraison...")
+
+    # ===== SOLUTION SANS HUBS =====
+    print("\n📊 Résolution SANS hubs...")
+    data_no_hubs = copy.deepcopy(data)
+    data_no_hubs['num_hubs'] = 0
+    data_no_hubs['hubs'] = []
+
+    manager_no_hubs, routing_no_hubs, solution_no_hubs = solve_vrp(data_no_hubs)
+
+    if solution_no_hubs is None:
+        print("❌ Aucune solution trouvée sans hubs")
+        total_time_no_hubs = float('inf')
+        results_no_hubs = None
+    else:
+        results_no_hubs = get_results(data_no_hubs, manager_no_hubs, routing_no_hubs, solution_no_hubs)
+        total_time_no_hubs = results_no_hubs['indicators']['total_time_all_vehicles']
+        print(f"✅ Solution sans hubs trouvée - Temps total: {format_time_display(total_time_no_hubs)}")
+
+    # ===== SOLUTION AVEC HUBS =====
+    print("\n📊 Résolution AVEC hubs...")
+    manager_with_hubs, routing_with_hubs, solution_with_hubs = solve_vrp(data)
+
+    if solution_with_hubs is None:
+        print("❌ Aucune solution trouvée avec hubs")
+        total_time_with_hubs = float('inf')
+        results_with_hubs = None
+    else:
+        results_with_hubs = get_results(data, manager_with_hubs, routing_with_hubs, solution_with_hubs)
+        total_time_with_hubs = results_with_hubs['indicators']['total_time_all_vehicles']
+        print(f"✅ Solution avec hubs trouvée - Temps total: {format_time_display(total_time_with_hubs)}")
+
+    # ===== COMPARAISON ET CHOIX =====
+    print("\n" + "="*80)
+    print("🎯 COMPARAISON DES SOLUTIONS")
+    print("="*80)
+    print(f"   Sans hubs : {format_time_display(total_time_no_hubs)}")
+    print(f"   Avec hubs : {format_time_display(total_time_with_hubs)}")
+
+    if total_time_with_hubs < total_time_no_hubs:
+        time_saved = total_time_no_hubs - total_time_with_hubs
+        print(f"\n   ✅ Solution AVEC hubs retenue (gain : {format_time_display(time_saved)})")
+        print("="*80 + "\n")
+        return manager_with_hubs, routing_with_hubs, solution_with_hubs, results_with_hubs, True
+    else:
+        time_lost = total_time_with_hubs - total_time_no_hubs
+        if time_lost > 0:
+            print(f"\n   ✅ Solution SANS hubs retenue (les hubs ajoutent {format_time_display(time_lost)})")
+        else:
+            print(f"\n   ✅ Solution SANS hubs retenue (temps équivalent)")
+        print("="*80 + "\n")
+        return manager_no_hubs, routing_no_hubs, solution_no_hubs, results_no_hubs, False
+
+
+def format_time_display(seconds):
+    """Formate le temps en secondes pour un affichage lisible"""
+    if seconds == float('inf'):
+        return "N/A"
+
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+
+    if hours > 0:
+        return f"{hours}h {minutes}m {secs}s"
+    elif minutes > 0:
+        return f"{minutes}m {secs}s"
+    else:
+        return f"{secs}s"

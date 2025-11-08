@@ -178,12 +178,42 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     for i in range(data['num_hubs']):
         h = hub_start + i
         loc = data['locations'][h]
+
+        # Hub main marker
         folium.Marker(
             loc,
             icon=folium.Icon(icon='warehouse', prefix='fa', color='green'),
             popup=f'Hub {i+1}',
             tooltip=f'Hub {i+1}'
         ).add_to(hubs_group)
+
+        # Deposit and Pickup markers at the same location with mini icons
+        # Deposit marker (drop-off)
+        folium.CircleMarker(
+            loc,
+            radius=6,
+            color='orange',
+            fill=True,
+            fillColor='orange',
+            fillOpacity=0.6,
+            weight=2,
+            popup=f'Hub {i+1} - Depot (Drop-off)',
+            tooltip=f'Hub {i+1} - Depot'
+        ).add_to(hubs_group)
+
+        # Pickup marker (pick-up)
+        folium.CircleMarker(
+            loc,
+            radius=5,
+            color='blue',
+            fill=True,
+            fillColor='blue',
+            fillOpacity=0.6,
+            weight=2,
+            popup=f'Hub {i+1} - Pickup (Pick-up)',
+            tooltip=f'Hub {i+1} - Pickup'
+        ).add_to(hubs_group)
+
     hubs_group.add_to(m)
 
     depot_group = folium.FeatureGroup(name='Depot')
