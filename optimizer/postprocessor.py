@@ -41,7 +41,35 @@ def format_time(seconds):
         return f"{hours:.0f}h{minutes:.0f}m{secs:.0f}s"
 
 
-def display_detailed_results(data, routes, estimated_times, current_loads, remaining_charges, 
+def compute_load_imbalance(final_loads):
+    """
+    Mesure le déséquilibre de charge entre véhicules : l'étendue relative
+    (max - min) rapportée à la charge moyenne, exprimée en pourcentage.
+
+    - 0 %   : tous les véhicules terminent avec la même charge (équilibre parfait)
+    - 100 % : l'écart entre le plus et le moins chargé vaut la charge moyenne
+
+    L'implémentation précédente calculait `max / min * 100`. Elle souffrait de
+    trois défauts :
+      1. un équilibre parfait sortait à 100 % au lieu de 0 % ;
+      2. c'était un ratio, pas la « différence relative » annoncée en commentaire ;
+      3. surtout, son garde-fou anti-division-par-zéro renvoyait 0 dès qu'un
+         véhicule finissait à vide — soit le score « parfaitement équilibré »
+         attribué au cas le plus déséquilibré qui soit, et affiché en vert.
+
+    :param final_loads: Charge finale de chaque véhicule
+    :return: Déséquilibre en pourcentage, arrondi à 2 décimales
+    """
+    if not final_loads:
+        return 0.0
+    mean_load = sum(final_loads) / len(final_loads)
+    if mean_load <= 0:
+        # Aucune charge transportée : il n'y a rien à déséquilibrer.
+        return 0.0
+    return round((max(final_loads) - min(final_loads)) / mean_load * 100, 2)
+
+
+def display_detailed_results(data, routes, estimated_times, current_loads, remaining_charges,
                            total_distance, total_tardiness, activated_hubs, load_imbalance_percentage, 
                            final_loads, calc_time):
     """
@@ -121,7 +149,11 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
     print(f"   {Colors.CYAN}Distance totale           :{Colors.RESET} {Colors.YELLOW}{total_distance}{Colors.RESET} unités")
     print(f"   {Colors.CYAN}Retard total              :{Colors.RESET} {Colors.RED if total_tardiness > 0 else Colors.GREEN}{format_time(total_tardiness)}{Colors.RESET}")
     print(f"   {Colors.CYAN}Hubs activés              :{Colors.RESET} {Colors.MAGENTA}{len(activated_hubs)}{Colors.RESET}")
-    print(f"   {Colors.CYAN}Déséquilibre de charge    :{Colors.RESET} {Colors.RED if load_imbalance_percentage > 150 else Colors.YELLOW if load_imbalance_percentage > 110 else Colors.GREEN}{load_imbalance_percentage}%{Colors.RESET}")
+    # Seuils calés sur l'étendue relative : 0 % = équilibre parfait.
+    imbalance_color = (Colors.RED if load_imbalance_percentage > 60
+                       else Colors.YELLOW if load_imbalance_percentage > 30
+                       else Colors.GREEN)
+    print(f"   {Colors.CYAN}Déséquilibre de charge    :{Colors.RESET} {imbalance_color}{load_imbalance_percentage}%{Colors.RESET}")
     print(f"   {Colors.CYAN}Temps de calcul           :{Colors.RESET} {Colors.BLUE}{calc_time}s{Colors.RESET}")
     
     print(f"\n{Colors.BOLD}{Colors.BLUE}📊 RÉPARTITION DES CHARGES FINALES:{Colors.RESET}")
@@ -365,10 +397,8 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
     # Calcul de la répartition de charge finale entre véhicules
     load_repartition = [solution.Value(capacity_dimension.CumulVar(routing.End(v))) for v in range(data['num_vehicles'])]
     
-    # Calcul du déséquilibre de charge en pourcentage (différence relative max-min)
-    # Utiliser la charge finale de chaque véhicule (dernier élément de chaque liste)
     final_loads = [vehicle_loads[-1] if vehicle_loads else 0 for vehicle_loads in current_loads]
-    load_imbalance_percentage = round((max(final_loads) / min(final_loads) * 100) if final_loads and min(final_loads) > 0 else 0, 2)
+    load_imbalance_percentage = compute_load_imbalance(final_loads)
 
     # Temps de calcul (pour l'instant fixé à 0, pourrait être mesuré)
     calc_time = 0
@@ -399,7 +429,7 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
             'total_distance': total_distance,           # Distance totale parcourue
             'total_tardiness_minutes': total_tardiness, # Retard total en secondes
             'activated_hubs': len(activated_hubs),      # Nombre de hubs utilisés
-            'load_repartition': load_repartition,          # déséquilibre de charge en pourcentage (différence relative max-min)
+            'load_repartition': load_repartition,          # charge cumulée en fin de tournée, par véhicule
             'load_imbalance_percentage': load_imbalance_percentage,
             'calc_time': calc_time,        # Temps de calcul
             'total_time_all_vehicles': total_time_all_vehicles  # Somme des temps de tous les véhicules (en secondes)

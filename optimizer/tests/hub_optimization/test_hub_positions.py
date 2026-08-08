@@ -107,7 +107,7 @@ class HubPositionOptimizer:
 
         try:
             # Résoudre avec cette configuration
-            manager, routing, solution, results, hubs_used = solve_vrp_with_optimal_hubs(data)
+            manager, routing, solution, results, hubs_used, _data_used = solve_vrp_with_optimal_hubs(data)
 
             if solution is None:
                 self.log("❌ Aucune solution trouvée pour cette position")
