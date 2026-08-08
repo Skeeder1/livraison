@@ -110,6 +110,17 @@ ENV/
 env.bak/
 venv.bak/
 
+# Secrets — motifs larges.
+# NB : `.env` seul ne matche PAS `secrets.env` ni `prod.env` : Git compare le nom
+# de fichier entier. C'est ainsi que .github/secrets.env avait fui dans l'historique.
+*.env
+!*.env.example
+secrets.env
+.github/secrets.env
+*.key
+*.pem
+credentials.json
+
 # Spyder project settings
 .spyderproject
 .spyproject
