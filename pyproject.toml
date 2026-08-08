@@ -1,0 +1,46 @@
+[project]
+name = "cvrptw-optimizer"
+version = "1.0.0"
+description = "Optimiseur de tournées de livraison (CVRPTW) avec rechargement en hub, basé sur Google OR-Tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+dependencies = [
+    # Solveur de routage sous contraintes.
+    # Note : ne pas descendre sous 9.15 sans revoir optimizer/solver.py, et voir
+    # `set_allowed_vehicles` pour la régression SWIG de la 9.15 (or-tools#4982).
+    "ortools>=9.15",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    # Rendu de la carte interactive des tournées.
+    "folium>=0.15",
+    # Graphiques d'analyse.
+    "matplotlib>=3.7",
+    "seaborn>=0.12",
+    # Sortie console colorée du rapport de solution.
+    "colorama>=0.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+cvrptw-solve = "optimizer.main:main"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["optimizer"]

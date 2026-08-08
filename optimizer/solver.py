@@ -355,10 +355,40 @@ def setup_time_constraints(routing, manager, data, time_dimension, num_real_vehi
         time_dimension.CumulVar(end_index).SetValue(data['vehicle_max_time'])
 
 
+def set_allowed_vehicles(routing, vehicles, index):
+    """
+    Restreint les véhicules autorisés à desservir un nœud.
+
+    Remplace `RoutingModel.SetAllowedVehiclesForIndex`, cassé côté Python depuis
+    OR-Tools 9.15 : la signature C++ est passée de `const std::vector<int>&` à
+    `absl::Span<const int>` sans typemap SWIG correspondant, si bien que tout
+    appel lève `TypeError: ... argument 2 of type 'absl::Span< int const >'`,
+    quel que soit le type passé (liste, tuple, ndarray).
+    Suivi amont : https://github.com/google/or-tools/issues/4982 (jalon 9.16).
+
+    On contraint donc directement la variable de véhicule du nœud, ce que
+    l'API native fait en interne.
+
+    La valeur -1 — sentinelle « nœud non desservi » — est réinjectée lorsqu'elle
+    appartient déjà au domaine. Sans cela, les `AddDisjunction` posées sur chaque
+    nœud deviendraient inopérantes : le solveur perdrait le droit d'abandonner un
+    client contre pénalité, ce qui peut rendre le modèle infaisable.
+
+    :param routing: Modèle de routage
+    :param vehicles: Indices des véhicules autorisés
+    :param index: Index solveur du nœud (issu de manager.NodeToIndex)
+    """
+    vehicle_var = routing.VehicleVar(index)
+    allowed = [int(v) for v in vehicles]
+    if vehicle_var.Contains(-1):
+        allowed.append(-1)
+    vehicle_var.SetValues(allowed)
+
+
 def setup_vehicle_restrictions(routing, manager, data, num_real_vehicles):
     """
     Configure les restrictions d'affectation des véhicules aux nœuds.
-    
+
     :param routing: Modèle de routage
     :param manager: Gestionnaire d'indices
     :param data: Dictionnaire de données
@@ -370,9 +400,9 @@ def setup_vehicle_restrictions(routing, manager, data, num_real_vehicles):
         if node in data['dummy_nodes']:
             dummy_i = data['dummy_nodes'].index(node)
             dummy_v = num_real_vehicles + dummy_i
-            routing.SetAllowedVehiclesForIndex([dummy_v], node_index)
+            set_allowed_vehicles(routing, [dummy_v], node_index)
         else:
-            routing.SetAllowedVehiclesForIndex(real_vehicles, node_index)
+            set_allowed_vehicles(routing, real_vehicles, node_index)
 
 
 def add_hub_constraints(routing, manager, data, time_dimension, capacity_dimension):
@@ -485,8 +515,18 @@ def solve_vrp_with_optimal_hubs(data):
     basée sur le temps total de livraison (somme des temps de tous les véhicules).
 
     :param data: Dictionnaire de données du problème
-    :return: Tuple (manager, routing, solution, results, hubs_used)
+    :return: Tuple (manager, routing, solution, results, hubs_used, data_used)
              - hubs_used: True si la solution avec hubs a été choisie, False sinon
+             - data_used: le dictionnaire de données correspondant EXACTEMENT à la
+               solution retenue.
+
+    Pourquoi `data_used` est renvoyé : `solve_vrp` mute son entrée
+    (`setup_data_extensions` ajoute les nœuds de dépôt/retrait des hubs, les
+    nœuds fictifs, et porte `num_vehicles` à `num_réels + num_hubs`). Les deux
+    résolutions travaillent donc sur deux états de données différents. Sans ce
+    retour, l'appelant devait reconstruire l'état à la main — reconstruction
+    incomplète qui laissait `num_vehicles` gonflé et faisait planter la
+    visualisation avec un IndexError sur les routes.
     """
     from optimizer.postprocessor import get_results
     import copy
@@ -534,7 +574,7 @@ def solve_vrp_with_optimal_hubs(data):
         time_saved = total_time_no_hubs - total_time_with_hubs
         print(f"\n   ✅ Solution AVEC hubs retenue (gain : {format_time_display(time_saved)})")
         print("="*80 + "\n")
-        return manager_with_hubs, routing_with_hubs, solution_with_hubs, results_with_hubs, True
+        return manager_with_hubs, routing_with_hubs, solution_with_hubs, results_with_hubs, True, data
     else:
         time_lost = total_time_with_hubs - total_time_no_hubs
         if time_lost > 0:
@@ -542,7 +582,7 @@ def solve_vrp_with_optimal_hubs(data):
         else:
             print(f"\n   ✅ Solution SANS hubs retenue (temps équivalent)")
         print("="*80 + "\n")
-        return manager_no_hubs, routing_no_hubs, solution_no_hubs, results_no_hubs, False
+        return manager_no_hubs, routing_no_hubs, solution_no_hubs, results_no_hubs, False, data_no_hubs
 
 
 def format_time_display(seconds):

@@ -39,8 +39,11 @@ def main():
     print(f"begining VRP solving with {data['num_nodes']} nodes and {data['num_vehicles']} vehicles and {data['num_hubs']} hubs")
     print(f"Baseline distance: {data['baseline_distance']:.2f}")
 
-    # Utiliser la nouvelle fonction qui compare avec/sans hubs
-    manager, routing, solution, results, hubs_used = solve_vrp_with_optimal_hubs(data)
+    # Compare les stratégies avec et sans hubs, et retourne la meilleure.
+    # `data_used` décrit l'état de données exact de la solution retenue : les deux
+    # résolutions travaillent sur des états différents (la version avec hubs ajoute
+    # des nœuds et des véhicules fictifs), et la visualisation doit utiliser le bon.
+    manager, routing, solution, results, hubs_used, data_used = solve_vrp_with_optimal_hubs(data)
 
     if solution is None:
         print("No solution found")
@@ -54,17 +57,7 @@ def main():
             else:
                 print(f"{key}: {value}")
 
-        # Utiliser les données appropriées pour la visualisation
-        if not hubs_used:
-            # Si on a choisi la solution sans hubs, recréer data_no_hubs pour la visualisation
-            import copy
-            data_viz = copy.deepcopy(data)
-            data_viz['num_hubs'] = 0
-            data_viz['hubs'] = []
-        else:
-            data_viz = data
-
-        create_visualization(data_viz, manager, routing, solution, results)
+        create_visualization(data_used, manager, routing, solution, results)
         print("Visualization created successfully")
     
 
