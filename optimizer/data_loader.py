@@ -4,6 +4,8 @@ import numpy as np
 from typing import Dict, Any
 import os
 
+from optimizer.config import Config
+
 def load_data(data_dir: str) -> Dict[str, Any]:
     """
     Loads all required data from JSON and NumPy files.
@@ -35,7 +37,10 @@ def load_data(data_dir: str) -> Dict[str, Any]:
     }
 
     # Locations: depot + customers + hubs
-    locations = [(0.0, 0.0)]  # Depot at (0,0) assume
+    # Le dépôt était codé en dur à (0.0, 0.0), ce qui contredisait silencieusement
+    # Config.DEPOT_POSITION : déplacer la zone de livraison déplaçait les clients
+    # mais laissait le dépôt en plein océan Atlantique.
+    locations = [tuple(Config.DEPOT_POSITION)]
     locations.extend(colis['position'].tolist())
     if len(hubs) > 0:
         locations.extend(hubs['position'].tolist())
@@ -65,7 +70,8 @@ def load_data(data_dir: str) -> Dict[str, Any]:
     data['end_times'] = livreurs['end_time'].tolist()
     
     # Time-related parameters (centralized in Config)
-    from .config import Config
+    # NB : l'import de Config est au niveau module. Le réimporter ici en ferait
+    # une variable locale à toute la fonction, y compris avant cette ligne.
     data['time_per_demand_unit'] = Config.SERVICE_TIME_PER_UNIT
     data['distance_to_time_factor'] = Config.DISTANCE_TO_TIME_FACTOR  # Facteur de conversion distance->temps
     data['vehicle_max_time'] = Config.END_TIME_MAX

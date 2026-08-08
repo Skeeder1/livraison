@@ -110,6 +110,17 @@ ENV/
 env.bak/
 venv.bak/
 
+# Artefacts générés par le solveur — reproductibles via `python -m optimizer.main`
+vrp_visualization.html
+solution_visualization.html
+optimizer/tests/toy_data/
+
+# Cache des itinéraires OSRM (voir optimizer/road_routing.py)
+.cache/
+
+# Images intermédiaires de la capture vidéo (voir tools/capture_demo.py)
+docs/images/_frames/
+
 # Secrets — motifs larges.
 # NB : `.env` seul ne matche PAS `secrets.env` ni `prod.env` : Git compare le nom
 # de fichier entier. C'est ainsi que .github/secrets.env avait fui dans l'historique.
