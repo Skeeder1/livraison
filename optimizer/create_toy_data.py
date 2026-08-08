@@ -14,11 +14,23 @@ WEIGHTS_DICT = {
     'waiting': 0.2
 }
 
-# Function to generate random positions
 def generate_random_position() -> Tuple[float, float]:
-    lat = np.random.uniform(Config.POSITION_RANGE_MIN, Config.POSITION_RANGE_MAX)
-    long = np.random.uniform(Config.POSITION_RANGE_MIN, Config.POSITION_RANGE_MAX)
-    return (lat, long)
+    """
+    Tire une position au hasard dans la zone de livraison, autour du dépôt.
+
+    `POSITION_RANGE_MIN/MAX` sont des décalages **relatifs au dépôt**, et non des
+    coordonnées absolues : sans cela, les points se retrouvaient autour de
+    (0, 0), c'est-à-dire en plein océan Atlantique.
+
+    Le décalage en longitude est divisé par cos(latitude) pour que la zone soit
+    approximativement circulaire au sol : à la latitude de Paris, un degré de
+    longitude ne vaut que ~73 km contre ~111 km pour un degré de latitude.
+    """
+    center_lat, center_lon = Config.DEPOT_POSITION
+    lat = center_lat + np.random.uniform(Config.POSITION_RANGE_MIN, Config.POSITION_RANGE_MAX)
+    lon_spread = 1.0 / np.cos(np.radians(center_lat))
+    lon = center_lon + np.random.uniform(Config.POSITION_RANGE_MIN, Config.POSITION_RANGE_MAX) * lon_spread
+    return (float(lat), float(lon))
 
 # Function to compute Euclidean distance matrix from positions
 def compute_distance_matrix(locations: List[Tuple[float, float]]) -> np.ndarray:
@@ -37,6 +49,10 @@ def create_toy_data(data_dir: str | None = None) -> None:
     if data_dir is None:
         data_dir = os.path.join('optimizer', 'tests', 'toy_data')
     os.makedirs(data_dir, exist_ok=True)
+
+    # Scénario reproductible d'une exécution à l'autre (cf. Config.RANDOM_SEED).
+    if Config.RANDOM_SEED is not None:
+        np.random.seed(Config.RANDOM_SEED)
 
     # Generate positions: depot + customers + hubs
     locations = [Config.DEPOT_POSITION]

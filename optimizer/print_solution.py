@@ -7,6 +7,8 @@ import os
 import json
 import folium
 from folium.plugins import HeatMap, MiniMap
+
+from optimizer.road_routing import build_road_legs
 import numpy as np
 import matplotlib.cm as cm
 from optimizer.data_loader import load_data
@@ -130,11 +132,29 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     colors = cm.tab10(np.linspace(0, 1, num_real_vehicles))
     colors_hex = ['#%02x%02x%02x' % (int(r*255), int(g*255), int(b*255)) for r, g, b, _ in colors]
 
+    # Géométrie routière réelle des tournées (OSRM), avec repli en lignes droites
+    # si le réseau est indisponible. Voir optimizer/road_routing.py.
+    print("🛣️  Calcul du tracé sur le réseau routier réel...")
+    road_legs = build_road_legs(
+        data['locations'],
+        results['per_livreur']['routes'][:num_real_vehicles],
+    )
+
     # Route groups
     for v in range(num_real_vehicles):
         group = folium.FeatureGroup(name=f'Route {v+1}')
         route = results['per_livreur']['routes'][v]
-        route_locs = [data['locations'][node] for node in route]
+        # On enchaîne la géométrie de chaque segment plutôt que de relier les
+        # clients à vol d'oiseau : le tracé suit les rues.
+        route_locs = []
+        for i in range(len(route) - 1):
+            leg = road_legs.get(f"{route[i]}-{route[i + 1]}")
+            if not leg:
+                leg = [data['locations'][route[i]], data['locations'][route[i + 1]]]
+            # Le dernier point d'un segment est le premier du suivant.
+            route_locs.extend(leg if not route_locs else leg[1:])
+        if not route_locs:
+            route_locs = [data['locations'][node] for node in route]
         folium.PolyLine(route_locs, color=colors_hex[v], weight=5, opacity=0.7).add_to(group)
         group.add_to(m)
 
@@ -221,7 +241,10 @@ def create_visualization(data, manager, routing, solution, results, output_file=
     depot_group.add_to(m)
 
     # Heatmap
-    heat_group = folium.FeatureGroup(name='Activity Heatmap')
+    # `show=False` : la carte de chaleur reste disponible dans le sélecteur de
+    # couches, mais n'est plus active au chargement. Elle recouvrait les tracés
+    # de tournée, qui sont l'information principale.
+    heat_group = folium.FeatureGroup(name='Activity Heatmap', show=False)
     HeatMap(heat_data).add_to(heat_group)
     heat_group.add_to(m)
 
@@ -248,7 +271,11 @@ def create_visualization(data, manager, routing, solution, results, output_file=
         'hub_deposits': data.get('hub_deposits', []),
         'hub_pickups': data.get('hub_pickups', []),
         'time_per_demand_unit': data['time_per_demand_unit'],
-        'baseline_distance': data.get('baseline_distance', 0)
+        'baseline_distance': data.get('baseline_distance', 0),
+        # Géométrie routière par segment, clé "noeud_depart-noeud_arrivee".
+        # L'animation interpole le long de ces points : les livreurs suivent les
+        # rues au lieu de se déplacer à vol d'oiseau.
+        'road_legs': road_legs,
     }
     js_data = convert_to_json_serializable(js_data)
     js_data_json = json.dumps(js_data)

@@ -1,14 +1,52 @@
 // File: script.js
 window.addEventListener('load', function() {
-    console.log("Custom script starting");
-    console.log("Map ID: {map_id}");
     var map = map_{map_id};
-    console.log("Map object:", map);
     var jsData = {js_data_json};
-    console.log("jsData loaded:", jsData);
-    console.log("Number of vehicles:", jsData.num_vehicles);
-    console.log("cumulative_loads available:", jsData.results.per_livreur.cumulative_loads);
-    console.log("Routes available:", jsData.results.per_livreur.routes);
+
+    // ── Déplacement le long du réseau routier ────────────────────────────
+    // `jsData.road_legs` contient, pour chaque segment client→client, la
+    // polyligne de l'itinéraire réel (OSRM). Interpoler le long de cette
+    // polyligne — et non entre les deux extrémités — fait suivre les rues aux
+    // livreurs. Les longueurs cumulées sont mises en cache : elles sont
+    // recalculées à chaque image sinon, pour chaque véhicule.
+    var legLengthCache = {};
+
+    function legMetrics(leg) {
+        var lengths = [0];
+        var total = 0;
+        for (var k = 1; k < leg.length; k++) {
+            var dLat = leg[k][0] - leg[k - 1][0];
+            var dLng = leg[k][1] - leg[k - 1][1];
+            total += Math.sqrt(dLat * dLat + dLng * dLng);
+            lengths.push(total);
+        }
+        return { lengths: lengths, total: total };
+    }
+
+    function pointAlongLeg(key, leg, fraction) {
+        if (!leg || leg.length < 2) { return null; }
+        var metrics = legLengthCache[key];
+        if (!metrics) {
+            metrics = legMetrics(leg);
+            legLengthCache[key] = metrics;
+        }
+        if (metrics.total === 0) { return leg[0]; }
+
+        // Recherche dichotomique du tronçon contenant la distance visée.
+        var target = fraction * metrics.total;
+        var lo = 0;
+        var hi = metrics.lengths.length - 1;
+        while (lo < hi - 1) {
+            var mid = (lo + hi) >> 1;
+            if (metrics.lengths[mid] <= target) { lo = mid; } else { hi = mid; }
+        }
+        var span = metrics.lengths[hi] - metrics.lengths[lo];
+        var f = span > 0 ? (target - metrics.lengths[lo]) / span : 0;
+        return [
+            leg[lo][0] + f * (leg[hi][0] - leg[lo][0]),
+            leg[lo][1] + f * (leg[hi][1] - leg[lo][1])
+        ];
+    }
 
     // Count real vehicles (exclude dummy vehicles)
     var num_real_vehicles = jsData.vehicle_capacities.length;
@@ -18,12 +56,10 @@ window.addEventListener('load', function() {
             break;
         }
     }
-    console.log("Number of real vehicles:", num_real_vehicles);
     var vehicleMarkers = [];
     var spinnerMarkers = [];
     var transferMarkers = [];
     jsData.results.transfers.forEach(function(tr) {
-        console.log("Adding transfer marker for hub:", tr.hub);
         var icon = L.divIcon({html: '<div style="background: yellow; padding: 2px;">P</div>', iconSize: [20,20]});
         var marker = L.marker(jsData.locations[tr.hub], {icon: icon, opacity: 0});
         marker.addTo(map);
@@ -31,7 +67,6 @@ window.addEventListener('load', function() {
     });
     // Only create markers for real vehicles, not dummy vehicles
     for (var v = 0; v < num_real_vehicles; v++) {
-        console.log("Adding vehicle marker for vehicle:", v);
         var cap = jsData.vehicle_capacities[v];
         // Display initial full charge
         var iconHtml = '<div style="position: relative;"><div style="position: absolute; top: -40px; left: 0; background: white; padding: 2px; border: 1px solid; width: 100px;">Charge: <span class="charge-text">' + cap + '/' + cap + '</span><div class="progress" style="background: green; width: 100%; height: 8px; border-radius: 4px;"></div></div><i class="fas fa-bicycle" style="color:' + jsData.colors[v] + '; font-size:24px;"></i></div>';
@@ -76,7 +111,6 @@ window.addEventListener('load', function() {
             if (t >= times[times.length - 1]) i = times.length - 2;
             i = Math.max(0, Math.min(i, times.length - 2)); // Ensure i is in valid range
 
-            console.log("DEBUG: Vehicle", v, "at time", t, "- selected index i:", i, "times length:", times.length, "cumulative_loads length:", cumulative_loads.length);
 
             // Safety check: ensure we have valid indices
             if (i < 0 || i >= route.length - 1 || i >= times.length - 1) {
@@ -112,7 +146,6 @@ window.addEventListener('load', function() {
                 phase = "idle"; // already left this segment
             }
 
-            console.log("DEBUG Vehicle", v, "at time", t, "- route index i:", i, "phase:", phase, "slack:", slack, "cumulative_loads[i]:", cumulative_loads[i]);
 
             // Calculate position and load based on phase
             if (phase === "service" || phase === "waiting") {
@@ -126,8 +159,18 @@ window.addEventListener('load', function() {
                 // Vehicle is in transit
                 var fraction = (t - depart_time) / travel;
                 fraction = Math.min(1, Math.max(0, fraction));
-                lat = loc_from[0] + fraction * (loc_to[0] - loc_from[0]);
-                lng = loc_from[1] + fraction * (loc_to[1] - loc_from[1]);
+                // Suivre l'itinéraire routier quand il est disponible ; sinon,
+                // repli sur le segment droit (cas hors ligne).
+                var legKey = from + '-' + to;
+                var roadLeg = jsData.road_legs ? jsData.road_legs[legKey] : null;
+                var roadPoint = pointAlongLeg(legKey, roadLeg, fraction);
+                if (roadPoint) {
+                    lat = roadPoint[0];
+                    lng = roadPoint[1];
+                } else {
+                    lat = loc_from[0] + fraction * (loc_to[0] - loc_from[0]);
+                    lng = loc_from[1] + fraction * (loc_to[1] - loc_from[1]);
+                }
                 current_load = cumulative_loads[i];
                 spinnerMarkers[v].setOpacity(0);
             } else if (phase === "idle" && t >= time_to) {
@@ -155,7 +198,6 @@ window.addEventListener('load', function() {
             // S'assurer que current_load est valide
             current_load = Math.max(0, Math.min(capacity, current_load));
 
-            console.log("DEBUG: Final display - Vehicle", v, "current_load:", current_load, "capacity:", capacity, "phase:", phase);
 
             // Reconstruire l'HTML pour s'assurer que la charge et la barre de progression sont correctement mises à jour
             var progress_width = (current_load / capacity * 100);
@@ -277,9 +319,7 @@ window.addEventListener('load', function() {
     
     // Test debug : forcer un affichage à t=50 pour voir l'évolution
     setTimeout(function() {
-        console.log("=== FORCED UPDATE AT t=50 ===");
         updateAtTime(50);
     }, 1000);
     
-    console.log("Custom script ended");
 });
