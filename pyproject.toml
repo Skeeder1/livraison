@@ -1,7 +1,7 @@
 [project]
 name = "cvrptw-optimizer"
 version = "1.0.0"
-description = "Optimiseur de tournées de livraison (CVRPTW) avec rechargement en hub, basé sur Google OR-Tools"
+description = "Delivery route optimizer for the CVRPTW with mid-route reloading at hubs, solved with Google OR-Tools and replayed on an animated map."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
