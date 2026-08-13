@@ -42,10 +42,18 @@ Data Load → Preprocess → Solve → Post-process → Visualize
 - `data_loader.py`: JSON + NumPy data loading
 - `preprocessor.py`: Baseline VRP computation
 - `postprocessor.py`: Results extraction
+- `trace.py`: Solution reading (slacks, per-step loads, JSON coercion), no rendering deps
+- `scenario.py`: Callable API, one solve, bounded params, returns a tour document
+- `tour_format.py`: Tour document contract consumed by the web demo
 - `print_solution.py`: Folium visualization
 - `config.py`: Centralized configuration
 - `create_toy_data.py`: Synthetic data generation
 - `stats.py`: Performance analysis
+
+**Server-side entry point:** never import `main.py` from a server (it calls
+`colorama.init`, reconfigures `sys.stdout`, sets `GLOG_*`). Use
+`scenario.solve_scenario` instead; it is not safe to call concurrently in one
+process (class-level `Config`, global NumPy seed).
 
 ## Configuration (config.py)
 

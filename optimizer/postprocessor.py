@@ -276,7 +276,7 @@ def get_total_distance(manager, routing, solution, data):
             
     return total_distance
 
-def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, routing: pywrapcp.RoutingModel, solution: pywrapcp.Assignment) -> Dict[str, Any]:
+def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, routing: pywrapcp.RoutingModel, solution: pywrapcp.Assignment, verbose: bool = True) -> Dict[str, Any]:
     """
     Extracts results from solution.
 
@@ -284,6 +284,10 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
     :param manager: Routing manager.
     :param routing: Routing model.
     :param solution: Solution assignment.
+    :param verbose: Affiche le rapport détaillé sur la sortie standard. Vrai par
+        défaut, pour l'exécution en ligne de commande. Un appelant serveur
+        (`optimizer.scenario`) le met à faux : le rapport fait une centaine de
+        lignes par résolution, et polluerait ses journaux.
     :return: Dictionary with results.
     """
     if solution is None:
@@ -413,9 +417,10 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
     )
 
     # Affichage des résultats détaillés
-    display_detailed_results(data, routes, estimated_times, current_loads, remaining_charges,
-                           total_distance, total_tardiness, activated_hubs, load_imbalance_percentage,
-                           final_loads, calc_time)
+    if verbose:
+        display_detailed_results(data, routes, estimated_times, current_loads, remaining_charges,
+                               total_distance, total_tardiness, activated_hubs, load_imbalance_percentage,
+                               final_loads, calc_time)
 
     # Retourner tous les résultats structurés
     return {

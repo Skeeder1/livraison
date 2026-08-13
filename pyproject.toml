@@ -37,6 +37,13 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short --strict-markers"
+markers = [
+    # Tests qui font tourner le solveur jusqu'au bout de son budget. Le scénario
+    # de référence verrouille les valeurs publiées dans la démonstration : il
+    # coûte 30 s, et reste dans l'exécution par défaut pour cette raison.
+    # `pytest -m "not slow"` donne la boucle rapide.
+    "slow: exécute une vraie résolution OR-Tools (plusieurs dizaines de secondes)",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

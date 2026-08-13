@@ -460,7 +460,21 @@ def add_hub_constraints(routing, manager, data, time_dimension, capacity_dimensi
 def configure_search_parameters(data):
     """
     Configure les paramètres de recherche pour le solver.
-    
+
+    Trois budgets sont réglables par clé de `data`, ce qui permet à un appelant
+    exposé au réseau (`optimizer.scenario`) de borner le calcul sans toucher à la
+    configuration globale du processus :
+
+    * `time_limit` : budget total, en secondes. `FromSeconds` exige un entier.
+    * `lns_time_limit_ms` : budget d'une passe de recherche à grand voisinage.
+      OR-Tools la fixe par défaut à 100 ms : elle ne peut donc pas prolonger la
+      recherche au-delà du budget total. L'épingler protège d'un changement de
+      valeur par défaut d'une version à l'autre.
+    * `num_search_workers` : nombre de fils de calcul. `RoutingSearchParameters`
+      **n'expose pas** ce champ ; le seul réglage de parallélisme accessible est
+      `sat_parameters.num_workers`, déjà à 1 dans les paramètres par défaut. On
+      l'écrit tout de même, pour que le mono-thread soit choisi et non subi.
+
     :param data: Dictionnaire de données
     :return: Paramètres de recherche configurés
     """
@@ -468,10 +482,18 @@ def configure_search_parameters(data):
     # Use PARALLEL_CHEAPEST_INSERTION for better initial vehicle balance
     search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
     search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-    
-    time_limit = data.get('time_limit', Config.TIME_TO_SOLVE)
+
+    time_limit = int(data.get('time_limit', Config.TIME_TO_SOLVE))
     search_parameters.time_limit.FromSeconds(time_limit)
-    
+
+    lns_time_limit_ms = data.get('lns_time_limit_ms')
+    if lns_time_limit_ms is not None:
+        search_parameters.lns_time_limit.FromMilliseconds(int(lns_time_limit_ms))
+
+    num_search_workers = data.get('num_search_workers')
+    if num_search_workers is not None:
+        search_parameters.sat_parameters.num_workers = int(num_search_workers)
+
     return search_parameters
 
 

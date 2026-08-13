@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![OR-Tools](https://img.shields.io/badge/OR--Tools-9.15-4285F4?logo=google&logoColor=white)
 ![Leaflet](https://img.shields.io/badge/Leaflet-OpenStreetMap-199900?logo=leaflet&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-14%20passants-success)
+![Tests](https://img.shields.io/badge/tests-60%20passants-success)
 ![Licence](https://img.shields.io/badge/licence-MIT-lightgrey)
 
 ---
@@ -103,6 +103,56 @@ DEPOT_POSITION = (48.8566, 2.3522)   # Paris, Île de la Cité
 RANDOM_SEED   = 42          # None pour un scénario différent à chaque exécution
 ```
 
+### Résoudre un scénario depuis du code
+
+`python -m optimizer.main` est un programme : il régénère les données, résout,
+écrit `vrp_visualization.html`, colore la sortie et reconfigure les flux
+standard. Rien de tout cela n'a sa place dans un service web. Pour appeler le
+solveur depuis du code, `optimizer/scenario.py` expose le même calcul sous forme
+de fonction :
+
+```python
+from pathlib import Path
+from optimizer.scenario import solve_scenario
+
+tour = solve_scenario(
+    {
+        "customers": 45,            # nombre de clients
+        "vehicles": 3,              # nombre de livreurs
+        "hubs": 2,                  # points de rechargement candidats
+        "capacity": 10,             # colis par véhicule
+        "time_windows_binding": False,  # fenêtres horaires réellement serrées
+        "budget_seconds": 30,       # budget de recherche
+    },
+    workdir=Path("/tmp/scenario-1234"),
+)
+
+print(tour["stats"]["customersServed"], "clients servis")
+print(tour["stats"]["roadKm"], "km parcourus, horizon", tour["horizon"], "s")
+```
+
+Le document retourné est autoportant : arrêts géolocalisés, segments tracés sur
+le réseau routier, charges, attentes et indicateurs. Son contrat complet est
+décrit en tête de [`optimizer/tour_format.py`](optimizer/tour_format.py), et
+c'est **la même fonction** qui met en forme la démonstration figée et une
+résolution servie en direct : les deux ont donc la même forme par construction.
+
+Quatre points à connaître avant de brancher cela derrière une route HTTP :
+
+- **Une seule résolution.** `main` en enchaîne trois (distance de référence, puis
+  avec et sans hubs). `solve_scenario` appelle `solve_vrp` une fois, ce qui
+  divise le temps de réponse par trois. En contrepartie, la stratégie de hub
+  n'est plus arbitrée : le document décrit la configuration demandée, pas la
+  meilleure des deux.
+- **Pas d'appel concurrent dans un même processus.** `Config` porte des attributs
+  de classe, et la génération des données initialise le générateur aléatoire
+  global de NumPy. Deux appels simultanés se corrompraient. Sérialiser les
+  appels, ou les isoler dans des sous-processus.
+- **Les paramètres sont bornés côté serveur** par `SCENARIO_LIMITS`, avant tout
+  calcul : un scénario, c'est du temps CPU.
+- **`workdir` est fourni par l'appelant.** Les six fichiers du jeu de données y
+  sont écrits puis relus ; rien ne dépend du répertoire courant du processus.
+
 ### Regénérer la vidéo de démonstration
 
 ```bash
@@ -114,14 +164,20 @@ Le script pilote le curseur temporel image par image dans un navigateur sans int
 ## Tests
 
 ```bash
-pytest
+pytest                  # tout, environ 50 s
+pytest -m "not slow"    # boucle rapide, environ 20 s
 ```
 
 ```
-14 passed in 0.15s
+60 passed in 51.93s
 ```
 
-Les tests couvrent l'indicateur de charge et la couche de compatibilité OR-Tools. L'un d'eux est une **sentinelle de régression amont** : il vérifie que `SetAllowedVehiclesForIndex` est toujours cassé côté OR-Tools, et échouera le jour où le correctif sortira — signalant que notre contournement peut être retiré.
+Les tests couvrent l'indicateur de charge, la couche de compatibilité OR-Tools, le contrat du document de tournée et l'API de scénario de bout en bout.
+
+Deux d'entre eux méritent d'être signalés :
+
+- une **sentinelle de régression amont** : elle vérifie que `SetAllowedVehiclesForIndex` est toujours cassé côté OR-Tools, et échouera le jour où le correctif sortira, signalant que notre contournement peut être retiré ;
+- un **test de non-régression de la démonstration** (marque `slow`) : il rejoue le scénario de référence, 45 clients et 3 véhicules avec la graine 42, et vérifie qu'il retrouve exactement les valeurs publiées (horizon 7 178 s, 140,9 km, 3 rechargements, 45 clients sur 45). Il consomme son budget de 30 secondes. La recherche étant bornée en temps, ces valeurs dépendent de la vitesse de la machine : un écart n'est pas nécessairement une régression, et le message d'échec le rappelle.
 
 ## Architecture
 
@@ -133,6 +189,9 @@ optimizer/
 ├── preprocessor.py     # Calcul de la distance de référence (baseline)
 ├── solver.py           # Modèle OR-Tools : dimensions, contraintes, hubs
 ├── postprocessor.py    # Extraction des routes et calcul des indicateurs
+├── trace.py            # Lecture d'une solution : attentes, charges, JSON
+├── scenario.py         # API : un scénario en entrée, une tournée en sortie
+├── tour_format.py      # Contrat du document servi au consommateur web
 ├── print_solution.py   # Rendu de la carte animée (folium / Leaflet)
 ├── road_routing.py     # Itinéraires sur le réseau routier réel (OSRM)
 ├── stats.py            # Analyses comparatives
@@ -140,7 +199,15 @@ optimizer/
 
 tools/capture_demo.py   # Capture de la démonstration en images et vidéo
 tests/unit/             # Tests unitaires
+tests/integration/      # Tests de bout en bout de l'API de scénario
+features-inventory.md   # Inventaire des fonctionnalités et de leurs tests
 ```
+
+`trace.py` et `tour_format.py` existent pour une raison précise : sans eux, la
+carte animée et l'API se partageraient deux copies du même calcul, qui auraient
+fini par diverger. Le rendu Leaflet importe désormais les mêmes fonctions que le
+serveur, et la seule dépendance à folium ou matplotlib reste dans
+`print_solution.py`.
 
 ## Choix techniques notables
 

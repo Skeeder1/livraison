@@ -44,8 +44,16 @@ def compute_distance_matrix(locations: List[Tuple[float, float]]) -> np.ndarray:
                 )
     return dist_matrix
 
-def create_toy_data(data_dir: str | None = None) -> None:
-    """Crée les données de test en utilisant la configuration actuelle."""
+def create_toy_data(data_dir: str | None = None, verbose: bool = True) -> None:
+    """
+    Crée les données de test en utilisant la configuration actuelle.
+
+    :param data_dir: Répertoire de destination. Par défaut `optimizer/tests/toy_data`,
+        **relatif au répertoire courant** : un appelant qui ne maîtrise pas son
+        répertoire de travail doit fournir un chemin absolu.
+    :param verbose: Affiche le récapitulatif du scénario généré. Faux pour un
+        appelant serveur, qui régénère les données à chaque requête.
+    """
     if data_dir is None:
         data_dir = os.path.join('optimizer', 'tests', 'toy_data')
     os.makedirs(data_dir, exist_ok=True)
@@ -110,10 +118,11 @@ def create_toy_data(data_dir: str | None = None) -> None:
     np.save(os.path.join(data_dir, 'distance_matrix.npy'), distance_matrix)
     np.save(os.path.join(data_dir, 'time_matrix.npy'), time_matrix)
 
-    print(f"Toy data created in {data_dir} with configuration:")
-    print(f" - Customers: {Config.NUM_CUSTOMERS}")
-    print(f" - Vehicles: {Config.NUM_VEHICLES}")
-    print(f" - Hubs: {Config.NUM_HUBS}")
+    if verbose:
+        print(f"Toy data created in {data_dir} with configuration:")
+        print(f" - Customers: {Config.NUM_CUSTOMERS}")
+        print(f" - Vehicles: {Config.NUM_VEHICLES}")
+        print(f" - Hubs: {Config.NUM_HUBS}")
 
 if __name__ == '__main__':
     create_toy_data()
