@@ -504,19 +504,26 @@ def configure_search_parameters(data):
     """
     Configure les paramètres de recherche pour le solver.
 
-    Trois budgets sont réglables par clé de `data`, ce qui permet à un appelant
+    Deux budgets sont réglables par clé de `data`, ce qui permet à un appelant
     exposé au réseau (`optimizer.scenario`) de borner le calcul sans toucher à la
     configuration globale du processus :
 
-    * `time_limit` : budget total, en secondes. `FromSeconds` exige un entier.
+    * `time_limit` : budget total, en secondes. `FromSeconds` n'accepte qu'un
+      entier ; un flottant lève `TypeError: 'float' object cannot be interpreted
+      as an integer`. Pour un budget inférieur à la seconde, passer par
+      `FromMilliseconds`.
     * `lns_time_limit_ms` : budget d'une passe de recherche à grand voisinage.
-      OR-Tools la fixe par défaut à 100 ms : elle ne peut donc pas prolonger la
-      recherche au-delà du budget total. L'épingler protège d'un changement de
-      valeur par défaut d'une version à l'autre.
-    * `num_search_workers` : nombre de fils de calcul. `RoutingSearchParameters`
-      **n'expose pas** ce champ ; le seul réglage de parallélisme accessible est
-      `sat_parameters.num_workers`, déjà à 1 dans les paramètres par défaut. On
-      l'écrit tout de même, pour que le mono-thread soit choisi et non subi.
+      Relevé sur OR-Tools 9.15.6755 : la valeur par défaut vaut **100 ms**
+      (`seconds=0, nanos=100_000_000`), et non 100 s. Elle ne peut donc pas
+      prolonger la recherche au-delà du budget total. L'épingler protège d'un
+      changement de valeur par défaut d'une version à l'autre.
+
+    **Il n'existe pas de réglage de parallélisme.** `RoutingSearchParameters`
+    n'a pas de champ `num_search_workers` : la liste complète de ses champs a été
+    vérifiée sur 9.15.6755. La recherche CP classique est mono-thread. Le seul
+    champ voisin est `sat_parameters.num_workers`, qui ne concerne que les
+    chemins CP-SAT, inactifs ici (`use_cp_sat` vaut BOOL_FALSE par défaut). Ne
+    pas repartir à sa recherche.
 
     :param data: Dictionnaire de données
     :return: Paramètres de recherche configurés
@@ -532,10 +539,6 @@ def configure_search_parameters(data):
     lns_time_limit_ms = data.get('lns_time_limit_ms')
     if lns_time_limit_ms is not None:
         search_parameters.lns_time_limit.FromMilliseconds(int(lns_time_limit_ms))
-
-    num_search_workers = data.get('num_search_workers')
-    if num_search_workers is not None:
-        search_parameters.sat_parameters.num_workers = int(num_search_workers)
 
     return search_parameters
 
