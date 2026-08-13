@@ -10,7 +10,7 @@ le mauvais endroit, sans jamais lever d'erreur.
 Ces tests verrouillent l'alignement entre les deux fonctions.
 """
 from optimizer.config import Config
-from optimizer.solver import create_base_node_mapping, setup_data_extensions
+from optimizer.solver import create_base_node_mapping, setup_data_extensions, strip_hubs
 
 
 def _donnees_minimales(num_customers=3, num_hubs=2, num_vehicles=2):
@@ -111,3 +111,45 @@ class TestCreateBaseNodeMapping:
         assert len(base_node) == data['num_locations'], (
             "un nœud sans correspondance ferait sortir get_distance de la table"
         )
+
+
+class TestStripHubs:
+    """Retrait effectif des hubs du problème."""
+
+    def test_retire_les_noeuds_de_hub_des_donnees(self):
+        # ── ARRANGE ────────────────────────────────────────────────
+        data = _donnees_minimales(num_customers=3, num_hubs=2)
+        import numpy as np
+        data['distance_matrix'] = np.zeros((6, 6))
+        data['time_matrix'] = np.zeros((6, 6))
+
+        # ── ACT ────────────────────────────────────────────────────
+        stripped = strip_hubs(data)
+
+        # ── ASSERT ─────────────────────────────────────────────────
+        assert stripped['num_hubs'] == 0
+        assert stripped['num_nodes'] == 4, "1 dépôt + 3 clients"
+        assert len(stripped['locations']) == 4
+        assert len(stripped['demands']) == 4
+        assert len(stripped['time_windows']) == 4
+        assert stripped['distance_matrix'].shape == (4, 4)
+        assert stripped['time_matrix'].shape == (4, 4)
+
+    def test_ne_modifie_pas_les_donnees_d_origine(self):
+        """`solve_vrp` mute son argument : la copie doit posséder ses listes."""
+        # ── ARRANGE ────────────────────────────────────────────────
+        data = _donnees_minimales(num_customers=3, num_hubs=2)
+        import numpy as np
+        data['distance_matrix'] = np.zeros((6, 6))
+        data['time_matrix'] = np.zeros((6, 6))
+
+        # ── ACT ────────────────────────────────────────────────────
+        stripped = strip_hubs(data)
+        stripped['locations'].append((0.0, 0.0))
+        stripped['demands'].append(0)
+
+        # ── ASSERT ─────────────────────────────────────────────────
+        assert len(data['locations']) == 6
+        assert len(data['demands']) == 6
+        assert data['num_hubs'] == 2
+        assert data['num_nodes'] == 6

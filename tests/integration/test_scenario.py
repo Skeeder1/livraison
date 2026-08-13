@@ -5,9 +5,8 @@ Ces tests font réellement tourner OR-Tools. Le plus long, celui du scénario de
 référence, consomme son budget complet de 30 secondes : il porte la marque
 `slow`, et `pytest -m "not slow"` le laisse de côté.
 
-Ce qu'il verrouille mérite ce prix : les valeurs figées dans la démonstration
-publique du portfolio. Si elles changent, la page rejoue autre chose que ce
-qu'elle annonce.
+Ce qu'il verrouille mérite ce prix : le scénario servi en vitrine. Toute dérive
+de ces valeurs signale que la démonstration ne rejoue plus le même problème.
 """
 import pytest
 
@@ -20,36 +19,43 @@ from optimizer.scenario import (
 )
 from tests.tour_invariants import assert_tour_invariants
 
-# Scénario de référence : 45 clients, 3 véhicules, 2 hubs, graine 42, budget 30 s.
-# Ce sont les valeurs par défaut, laissées explicites pour que le test dise
-# lui-même ce qu'il rejoue.
+# Scénario de référence : 45 clients, 3 véhicules, aucun hub, graine 42,
+# budget 30 s. Ce sont les valeurs par défaut, laissées explicites pour que le
+# test dise lui-même ce qu'il rejoue.
 REFERENCE_PARAMS = {
     'customers': 45,
     'vehicles': 3,
-    'hubs': 2,
+    'hubs': 0,
     'capacity': 10,
     'budget_seconds': 30,
     'seed': 42,
 }
 
-# Valeurs relevées sur l'instantané publié (`delivery-tour.json` du portfolio),
-# lui-même produit par `python -m optimizer.main`.
+# Relevé sur ce scénario après le retrait effectif des hubs (`strip_hubs`).
+#
+# Ces valeurs ne sont PAS celles de l'instantané publié dans le portfolio
+# (`delivery-tour.json` : horizon 7178, 21516 s cumulées, 140,9 km, arrêts
+# 20/17/19, 2 passages en hub). Cet instantané provient de la variante « sans
+# hubs » défectueuse, qui laissait les deux nœuds de hub dans le modèle en
+# passages obligatoires. Les livreurs les traversaient sous contrainte. Le
+# scénario corrigé sert 18 secondes plus vite et ne passe par aucun hub.
 REFERENCE_STATS = {
-    'horizon': 7178,
-    'cumulativeDriveTime': 21516,
+    'horizon': 7160,
+    'cumulativeDriveTime': 21415,
     'reloads': 3,
     'customers': 45,
     'customersServed': 45,
+    'hubsAvailable': 0,
     'hubsActivated': 0,
-    'hubFlybys': 2,
+    'hubFlybys': 0,
     'tardinessMinutes': 0,
 }
-REFERENCE_STOPS_PER_VEHICLE = [20, 17, 19]
-REFERENCE_ROAD_KM = 140.9
+REFERENCE_STOPS_PER_VEHICLE = [17, 17, 20]
+REFERENCE_ROAD_KM = 150.3
 
 # Un scénario minuscule suffit pour tout ce qui ne dépend pas des valeurs de
 # référence : la forme du document et la stabilité des appels.
-SMALL_PARAMS = {'customers': 10, 'vehicles': 2, 'hubs': 1, 'budget_seconds': 2}
+SMALL_PARAMS = {'customers': 10, 'vehicles': 2, 'hubs': 0, 'budget_seconds': 2}
 
 
 @pytest.fixture(scope='module')
@@ -73,16 +79,16 @@ def _road_geometry_available(tour):
 
 @pytest.mark.slow
 class TestScenarioDeReference:
-    """Le scénario publié dans la démonstration, rejoué à l'identique."""
+    """Le scénario de vitrine, rejoué à l'identique."""
 
-    def test_reproduit_les_indicateurs_publies(self, reference_tour):
+    def test_reproduit_les_indicateurs_de_reference(self, reference_tour):
         # ── ACT ────────────────────────────────────────────────────
         stats = reference_tour['stats']
 
         # ── ASSERT ─────────────────────────────────────────────────
         obtenu = {key: stats[key] for key in REFERENCE_STATS}
         assert obtenu == REFERENCE_STATS, (
-            "les indicateurs s'écartent de l'instantané publié.\n"
+            "les indicateurs s'écartent du relevé de référence.\n"
             "La recherche est bornée en temps : sur une machine sensiblement plus "
             "lente, ou sous forte charge, la trajectoire de la recherche locale "
             "diffère et ces valeurs bougent sans qu'il y ait de régression. "
@@ -132,7 +138,27 @@ class TestSolveScenario:
         assert_tour_invariants(tour)
         assert tour['stats']['customers'] == 10
         assert tour['stats']['vehicles'] == 2
-        assert tour['stats']['hubsAvailable'] == 1
+
+    def test_sans_hub_aucun_hub_ne_subsiste(self, tmp_path):
+        """À `hubs` 0, aucun nœud de hub ne doit rester dans les tournées.
+
+        L'implémentation précédente de la variante sans hubs se contentait de
+        mettre `num_hubs` à 0 : les nœuds restaient dans le modèle, sans
+        disjonction, donc obligatoires. Les tournées les traversaient sous
+        contrainte pendant que l'indicateur annonçait 0 hub activé.
+        """
+        # ── ACT ────────────────────────────────────────────────────
+        tour = solve_scenario(SMALL_PARAMS, workdir=tmp_path, fetch_roads=False)
+
+        # ── ASSERT ─────────────────────────────────────────────────
+        assert tour['hubs'] == []
+        assert tour['stats']['hubsAvailable'] == 0
+        assert tour['stats']['hubFlybys'] == 0
+        arrets = [stop for veh in tour['vehicles'] for stop in veh['stops']]
+        assert not [stop for stop in arrets if stop['kind'] == 'hub']
+        # Les nœuds au-delà des clients ne peuvent plus être que des
+        # rechargements au dépôt.
+        assert max(stop['node'] for stop in arrets) < 1 + 10 + 10
 
     def test_deux_appels_successifs_donnent_le_meme_resultat(self, tmp_path):
         """Le scénario est reproductible dans un même processus : graine fixée,
@@ -201,11 +227,11 @@ class TestSolveScenario:
         assert (workdir / 'distance_matrix.npy').exists()
 
     def test_transferts_en_hub_actives(self, tmp_path):
-        """Avec les transferts, le solveur ajoute nœuds et véhicules fictifs :
+        """Avec des hubs, le solveur ajoute nœuds et véhicules fictifs :
         le document ne doit décrire que les véhicules qui roulent."""
         # ── ACT ────────────────────────────────────────────────────
         tour = solve_scenario(
-            {**SMALL_PARAMS, 'hubs': 2, 'hub_transfers': True, 'budget_seconds': 3},
+            {**SMALL_PARAMS, 'hubs': 2, 'budget_seconds': 3},
             workdir=tmp_path,
             fetch_roads=False,
         )
@@ -239,11 +265,6 @@ class TestValidationDesParametres:
         # ── ACT / ASSERT ───────────────────────────────────────────
         with pytest.raises(ScenarioParamsError):
             solve_scenario({'budget_seconds': 0}, workdir=tmp_path)
-
-    def test_refuse_les_transferts_sans_hub(self, tmp_path):
-        # ── ACT / ASSERT ───────────────────────────────────────────
-        with pytest.raises(ScenarioParamsError, match='au moins un hub'):
-            solve_scenario({'hubs': 0, 'hub_transfers': True}, workdir=tmp_path)
 
     def test_refuse_un_booleen_mal_type(self, tmp_path):
         # ── ACT / ASSERT ───────────────────────────────────────────

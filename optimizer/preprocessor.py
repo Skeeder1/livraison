@@ -1,6 +1,6 @@
 # optimizer/preprocessor.py
 from typing import Dict, Any
-from .solver import solve_vrp
+from .solver import solve_vrp, strip_hubs
 from .postprocessor import get_total_distance
 def preprocess(data: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -11,16 +11,11 @@ def preprocess(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     # Filter hubs: keep all for now, or implement filtering e.g., based on location clustering
 
-    # Compute baseline without hubs
-    data_no_hubs = data.copy()
-    n = 1 + data_no_hubs['num_customers']
-    data_no_hubs['num_hubs'] = 0
-    data_no_hubs['num_nodes'] = n
-    data_no_hubs['demands'] = data_no_hubs['demands'][:n]
-    data_no_hubs['time_windows'] = data_no_hubs['time_windows'][:n]
-    data_no_hubs['distance_matrix'] = data_no_hubs['distance_matrix'][:n, :n]
-    data_no_hubs['time_matrix'] = data_no_hubs['time_matrix'][:n, :n]
-    data_no_hubs['locations'] = data_no_hubs['locations'][:n]
+    # Compute baseline without hubs.
+    # Le retrait des hubs est mutualisé dans `strip_hubs` : la troncature était
+    # dupliquée ici, et `solve_vrp_with_optimal_hubs` en avait une version
+    # incomplète qui laissait les hubs dans le modèle.
+    data_no_hubs = strip_hubs(data)
     manager, routing, solution = solve_vrp(data_no_hubs)
     if solution is None:
         raise ValueError("No baseline solution found")

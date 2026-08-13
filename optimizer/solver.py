@@ -21,6 +21,49 @@ def service_time(data, node):
     return abs(data['demands'][node]) * Config.SERVICE_TIME_PER_UNIT
 
 
+def strip_hubs(data):
+    """
+    Retourne une copie des données d'où les hubs sont réellement absents.
+
+    Mettre `num_hubs` à 0 ne suffit pas, et le croire a produit un défaut
+    silencieux. Les positions des hubs restent dans `locations`, `demands` et
+    `time_windows` ; le modèle les crée donc en nœuds ordinaires. Or
+    `configure_constraints_and_penalties` ne pose de disjonction que sur
+    `range(hub_start, hub_start + num_hubs)`, c'est-à-dire sur rien. Privés de
+    disjonction, ces nœuds ne peuvent plus être abandonnés : ils deviennent des
+    passages **obligatoires**. Mesure sur le scénario de référence : 55
+    disjonctions au lieu de 59, et `ActiveVar` bornée à [1, 1] pour les deux
+    nœuds de hub.
+
+    Conséquence : la comparaison « avec ou sans hubs » opposait la version avec
+    hubs à une version qui traversait quand même les hubs, sous contrainte. Les
+    tournées passaient par les hubs parce qu'elles y étaient forcées, pas parce
+    qu'un détour avait été évalué puis retenu. Et comme `get_activated_hubs`
+    boucle sur `num_hubs`, l'indicateur annonçait sereinement 0 hub activé.
+
+    Le retrait porte donc sur toutes les structures indexées par numéro de nœud.
+    Les listes sont recopiées : `solve_vrp` mute son argument, une tranche
+    partagée serait allongée par la résolution.
+
+    :param data: Données chargées, hubs compris
+    :return: Copie sans aucun hub, prête pour `solve_vrp`
+    """
+    num_nodes = 1 + data['num_customers']
+
+    stripped = dict(data)
+    stripped['num_hubs'] = 0
+    stripped['hubs'] = []
+    stripped['num_nodes'] = num_nodes
+    stripped['locations'] = list(data['locations'][:num_nodes])
+    stripped['demands'] = list(data['demands'][:num_nodes])
+    stripped['time_windows'] = list(data['time_windows'][:num_nodes])
+    stripped['distance_matrix'] = data['distance_matrix'][:num_nodes, :num_nodes]
+    if 'time_matrix' in data:
+        stripped['time_matrix'] = data['time_matrix'][:num_nodes, :num_nodes]
+
+    return stripped
+
+
 def setup_data_extensions(data):
     """
     Étend les données avec les nœuds additionnels pour OR-Tools.
@@ -567,15 +610,16 @@ def solve_vrp_with_optimal_hubs(data):
     visualisation avec un IndexError sur les routes.
     """
     from optimizer.postprocessor import get_results
-    import copy
 
     print("\n🔍 Comparaison avec/sans hubs pour optimiser le temps total de livraison...")
 
     # ===== SOLUTION SANS HUBS =====
     print("\n📊 Résolution SANS hubs...")
-    data_no_hubs = copy.deepcopy(data)
-    data_no_hubs['num_hubs'] = 0
-    data_no_hubs['hubs'] = []
+    # `strip_hubs` retire réellement les nœuds de hub. La version précédente se
+    # contentait de mettre `num_hubs` à 0 sur une copie profonde, ce qui laissait
+    # les hubs dans le modèle en passages obligatoires : la branche « sans hubs »
+    # traversait les hubs. Voir `strip_hubs`.
+    data_no_hubs = strip_hubs(data)
 
     manager_no_hubs, routing_no_hubs, solution_no_hubs = solve_vrp(data_no_hubs)
 

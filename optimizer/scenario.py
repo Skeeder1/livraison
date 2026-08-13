@@ -59,16 +59,20 @@ SCENARIO_LIMITS: Dict[str, tuple] = {
     'budget_seconds': (1, 60),
 }
 
-#: Valeurs par défaut : le scénario de référence de la démonstration.
+#: Valeurs par défaut : le scénario de référence, sans hub.
+#:
+#: `hubs` vaut 0 délibérément. Un hub n'existe que pour permettre un transfert de
+#: colis entre véhicules ; en demander sans vouloir de transfert n'a pas de sens,
+#: et c'est précisément la confusion qui a produit la démonstration figée, où les
+#: hubs étaient traversés sous contrainte. Voir `solve_scenario`.
 SCENARIO_DEFAULTS: Dict[str, Any] = {
     'customers': 45,
     'vehicles': 3,
-    'hubs': 2,
+    'hubs': 0,
     'capacity': 10,
     'time_windows_binding': False,
     'budget_seconds': 30,
     'seed': 42,
-    'hub_transfers': False,
 }
 
 #: Fenêtres horaires contraignantes : fin tirée entre 2 h et 6 h après l'ouverture.
@@ -115,9 +119,8 @@ def _normalize_params(params: Dict[str, Any]) -> Dict[str, Any]:
     resolved = dict(SCENARIO_DEFAULTS)
     resolved.update(params)
 
-    for key in ('time_windows_binding', 'hub_transfers'):
-        if not isinstance(resolved[key], bool):
-            raise ScenarioParamsError(f"{key} doit être un booléen")
+    if not isinstance(resolved['time_windows_binding'], bool):
+        raise ScenarioParamsError("time_windows_binding doit être un booléen")
 
     if resolved['seed'] is not None:
         try:
@@ -133,9 +136,6 @@ def _normalize_params(params: Dict[str, Any]) -> Dict[str, Any]:
             raise ScenarioParamsError(f"{key} doit être compris entre {low} et {high}, reçu {value}")
         resolved[key] = int(value)
 
-    if resolved['hub_transfers'] and resolved['hubs'] == 0:
-        raise ScenarioParamsError("hub_transfers exige au moins un hub")
-
     return resolved
 
 
@@ -148,20 +148,18 @@ def solve_scenario(
     """
     Génère un scénario, le résout **une fois**, et retourne la tournée mise en forme.
 
-    Paramètres acceptés dans `params`, avec leurs valeurs par défaut (celles du
-    scénario de référence de la démonstration) :
+    Paramètres acceptés dans `params`, avec leurs valeurs par défaut :
 
     ==========================  =========  ===================================
     Clé                         Défaut     Effet
     ==========================  =========  ===================================
     `customers`                 45         Nombre de clients à desservir
     `vehicles`                  3          Nombre de livreurs
-    `hubs`                      2          Nombre de points de rechargement
+    `hubs`                      0          Points de transfert entre véhicules
     `capacity`                  10         Capacité d'un véhicule, en colis
     `time_windows_binding`      False      Fenêtres horaires réellement serrées
     `budget_seconds`            30         Budget de recherche, en secondes
     `seed`                      42         Graine du tirage ; None pour varier
-    `hub_transfers`             False      Active le transfert de colis en hub
     ==========================  =========  ===================================
 
     Chaque valeur est bornée par `SCENARIO_LIMITS` avant d'atteindre le solveur.
@@ -175,16 +173,28 @@ def solve_scenario(
       champ du document retourné, sa seule perte est donc théorique ;
     * **la stratégie de hub n'est pas arbitrée** : le document décrit la
       configuration demandée, et non la meilleure des deux. Un appelant qui veut
-      la comparaison doit lancer deux scénarios, `hub_transfers` à faux puis à
-      vrai, et comparer `stats.cumulativeDriveTime`.
+      la comparaison doit lancer deux scénarios, `hubs` à 0 puis à la valeur
+      voulue, et comparer `stats.cumulativeDriveTime`.
 
-    **Sans transfert (`hub_transfers=False`, le défaut)**, la mécanique d'échange
-    entre véhicules est désactivée : ni nœuds de dépôt et de retrait, ni
-    véhicules fictifs. Les positions des hubs restent dans le jeu de données, et
-    comme aucune disjonction n'est posée sur elles, elles deviennent des
-    passages **obligatoires** : les tournées les traversent alors que
-    `stats.hubsActivated` vaut 0. C'est exactement l'état de données qui a
-    produit la démonstration figée, d'où ce défaut.
+    **`hubs` commande le transfert, et rien d'autre.** À 0, les hubs sont
+    absents du problème (`strip_hubs`). Au-delà, chaque hub devient un point
+    d'échange entre véhicules, avec ses nœuds de dépôt et de retrait et son
+    véhicule fictif. Il n'existe pas d'état intermédiaire où un hub serait une
+    simple étape sur la route : un hub ne porte aucune demande, le traverser
+    sans y transférer quoi que ce soit ne fait qu'allonger la tournée.
+
+    C'est précisément cette confusion qui a produit la démonstration figée. La
+    variante « sans hubs » y mettait `num_hubs` à 0 sans retirer les nœuds ; ceux-ci
+    perdaient leur disjonction et devenaient **obligatoires**. Les livreurs
+    traversaient les deux hubs sous contrainte, pendant que l'indicateur
+    annonçait 0 hub activé. Cet instantané n'est plus reproductible, et c'est
+    voulu.
+
+    Un avertissement sur la qualité : avec `hubs > 0`, le modèle de transfert
+    dégrade nettement les tournées sur les jeux de données jouet, le détour
+    coûtant plus que le rééquilibrage ne rapporte. C'est un résultat du solveur,
+    pas un défaut d'API, et la comparaison est justement ce que
+    `optimizer.main` sert à trancher.
 
     **Cette fonction n'est pas sûre en concurrence dans un même processus.** Elle
     écrit dans `Config`, dont les attributs sont des attributs de **classe**,
@@ -239,18 +249,16 @@ def solve_scenario(
         create_toy_data(str(workdir), verbose=False)
         data = load_data(str(workdir))
 
-        if not settings['hub_transfers']:
-            # Les hubs restent des positions du jeu de données, mais le solveur
-            # n'en fait plus des points de transfert : aucun nœud de dépôt ni de
-            # retrait n'est créé, et aucun véhicule fictif n'est ajouté.
-            data['num_hubs'] = 0
-            data['hubs'] = []
+        # Aucun retrait à faire ici : `hubs` pilote `Config.NUM_HUBS`, donc à 0
+        # le jeu de données ne contient aucun hub dès sa génération. Le cas des
+        # données déjà chargées avec des hubs à écarter est traité par
+        # `solver.strip_hubs`, qu'utilisent `preprocess` et la comparaison
+        # avec/sans hubs.
 
         # Bornes imposées au solveur, transportées par `data` : elles ne touchent
         # pas la configuration globale du processus.
         data['time_limit'] = int(settings['budget_seconds'])
         data['lns_time_limit_ms'] = LNS_TIME_LIMIT_MS
-        data['num_search_workers'] = 1
 
         started = time.monotonic()
         manager, routing, solution = solve_vrp(data)
