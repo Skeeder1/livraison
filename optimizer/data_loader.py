@@ -63,8 +63,15 @@ def load_data(data_dir: str) -> Dict[str, Any]:
         time_windows[1 + i] = (colis.iloc[i]['tw_start'], colis.iloc[i]['tw_end'])
     data['time_windows'] = time_windows
 
-    # Vehicle info
-    data['vehicle_capacities'] = livreurs['capacity'].tolist()
+    # Vehicle info.
+    # Capacités ramenées à l'entier : c'est déjà ce que le solveur applique
+    # (`setup_data_extensions` fait `int(cap)`), et la troncature était jusqu'ici
+    # invisible. Une capacité de 13.7 était annoncée telle quelle, contrainte à
+    # 13 par le modèle, et faisait planter le rapport console sur un format
+    # entier (`ValueError: Unknown format code 'd' for object of type 'float'`).
+    # Le cas ne se présentait pas avec les données jouet, dont la colonne
+    # entièrement à 10.0 est relue en int64 par pandas.
+    data['vehicle_capacities'] = [int(capacity) for capacity in livreurs['capacity'].tolist()]
     data['num_vehicles'] = len(livreurs)
     data['start_times'] = livreurs['start_time'].tolist()
     data['end_times'] = livreurs['end_time'].tolist()

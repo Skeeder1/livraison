@@ -120,7 +120,7 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
                 node_type = f"{Colors.GREEN}👤 Client {node}{Colors.RESET}"
                 demand = data['demands'][node]
                 tw_start, tw_end = data['time_windows'][node]
-                print(f"      {Colors.WHITE}Étape {i+1:2d}:{Colors.RESET} {node_type:<25} | {Colors.YELLOW}Arrivée: {format_time(time):<8}{Colors.RESET} | {Colors.CYAN}Charge: {load:2d}/{vehicle_capacity}{Colors.RESET} | {Colors.MAGENTA}Node: {node}{Colors.RESET}")
+                print(f"      {Colors.WHITE}Étape {i+1:2d}:{Colors.RESET} {node_type:<25} | {Colors.YELLOW}Arrivée: {format_time(time):<8}{Colors.RESET} | {Colors.CYAN}Charge: {load:>2}/{vehicle_capacity}{Colors.RESET} | {Colors.MAGENTA}Node: {node}{Colors.RESET}")
                 continue
             elif data['num_customers'] + Config.NUM_UNLOAD_DEPOTS > node > data['num_customers']:
                 node_type = f"{Colors.MAGENTA}🔄 DÉPÔT {node - data['num_customers']}{Colors.RESET}"
@@ -130,7 +130,7 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
             else:
                 node_type = f"{Colors.WHITE}? Nœud {node}{Colors.RESET}"
             
-            print(f"      {Colors.WHITE}Étape {i+1:2d}:{Colors.RESET} {node_type:<25} | {Colors.YELLOW}Arrivée: {format_time(time):<8}{Colors.RESET} | {Colors.CYAN}Charge: {load:2d}/{vehicle_capacity}{Colors.RESET} | {Colors.MAGENTA}Node: {node}{Colors.RESET}")
+            print(f"      {Colors.WHITE}Étape {i+1:2d}:{Colors.RESET} {node_type:<25} | {Colors.YELLOW}Arrivée: {format_time(time):<8}{Colors.RESET} | {Colors.CYAN}Charge: {load:>2}/{vehicle_capacity}{Colors.RESET} | {Colors.MAGENTA}Node: {node}{Colors.RESET}")
         
         # Statistiques du véhicule
         total_delivery = loads[0] - loads[-1] if loads else 0
@@ -173,7 +173,7 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
             color = Colors.BLUE
             
         vehicle_color = [Colors.GREEN, Colors.YELLOW, Colors.MAGENTA, Colors.BLUE, Colors.RED][v % 5]
-        print(f"   {vehicle_color}Véhicule {v+1:2d}{Colors.RESET}            : {color}{final_load:2d}/{vehicle_capacity} ({percentage:.1f}%){Colors.RESET}")
+        print(f"   {vehicle_color}Véhicule {v+1:2d}{Colors.RESET}            : {color}{final_load:>2}/{vehicle_capacity} ({percentage:.1f}%){Colors.RESET}")
     
     if data['num_hubs'] > 0:
         print(f"\n{Colors.BOLD}{Colors.MAGENTA}🔄 HUBS UTILISÉS:{Colors.RESET}")

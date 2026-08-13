@@ -90,7 +90,9 @@ def create_toy_data(data_dir: str | None = None, verbose: bool = True) -> None:
     # Toy livreurs
     livreurs_data = {
         'id': list(range(1, Config.NUM_VEHICLES + 1)),
-        'capacity': [np.random.uniform(Config.VEHICLE_CAPACITY_MIN, Config.VEHICLE_CAPACITY_MAX) 
+        # Capacités entières : un véhicule transporte un nombre entier de colis,
+        # et le solveur tronque de toute façon (`setup_data_extensions`).
+        'capacity': [int(round(np.random.uniform(Config.VEHICLE_CAPACITY_MIN, Config.VEHICLE_CAPACITY_MAX)))
                     for _ in range(Config.NUM_VEHICLES)],
         'start_time': [Config.START_TIME_MIN for _ in range(Config.NUM_VEHICLES)],
         'end_time': [Config.END_TIME_MAX for _ in range(Config.NUM_VEHICLES)]
