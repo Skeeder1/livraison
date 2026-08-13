@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![OR-Tools](https://img.shields.io/badge/OR--Tools-9.15-4285F4?logo=google&logoColor=white)
 ![Leaflet](https://img.shields.io/badge/Leaflet-OpenStreetMap-199900?logo=leaflet&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-60%20passants-success)
+![Tests](https://img.shields.io/badge/tests-77%20passants-success)
 ![Licence](https://img.shields.io/badge/licence-MIT-lightgrey)
 
 ---
@@ -55,12 +55,14 @@ Les hubs coûtent des détours. Sont-ils rentables ? Le programme **résout le p
 
 ```
 🎯 COMPARAISON DES SOLUTIONS
-   Sans hubs : 5h 58m 36s
-   Avec hubs : 29h 16m 23s
-   ✅ Solution SANS hubs retenue (les hubs ajoutent 23h 17m 47s)
+   Sans hubs : 5h 56m 55s
+   Avec hubs : 30h 27m 33s
+   ✅ Solution SANS hubs retenue (les hubs ajoutent 24h 30m 38s)
 ```
 
-Sur ce jeu de données, les hubs ne sont pas rentables — le détour coûte davantage que le rechargement ne fait gagner. C'est un résultat, pas un échec : l'outil sert précisément à trancher cette question sur des données réelles.
+Sur ce jeu de données, les hubs ne sont pas rentables : le détour coûte davantage que le rééquilibrage ne fait gagner. C'est un résultat, pas un échec, et l'outil sert précisément à trancher cette question sur des données réelles.
+
+Encore fallait-il que la comparaison porte sur ce qu'elle annonçait. La branche « sans hubs » se contentait jusqu'ici de mettre le compteur de hubs à zéro sans retirer leurs nœuds du problème. Ceux-ci perdaient alors la disjonction qui autorise à les ignorer, et devenaient des passages **obligatoires** : les livreurs traversaient les hubs sous contrainte, pendant que l'indicateur annonçait tranquillement zéro hub activé. Le retrait est désormais effectif ([`strip_hubs`](optimizer/solver.py)), et vérifié par les tests.
 
 ## Aperçus
 
@@ -119,7 +121,7 @@ tour = solve_scenario(
     {
         "customers": 45,            # nombre de clients
         "vehicles": 3,              # nombre de livreurs
-        "hubs": 2,                  # points de rechargement candidats
+        "hubs": 0,                  # points de transfert entre véhicules
         "capacity": 10,             # colis par véhicule
         "time_windows_binding": False,  # fenêtres horaires réellement serrées
         "budget_seconds": 30,       # budget de recherche
@@ -134,10 +136,17 @@ print(tour["stats"]["roadKm"], "km parcourus, horizon", tour["horizon"], "s")
 Le document retourné est autoportant : arrêts géolocalisés, segments tracés sur
 le réseau routier, charges, attentes et indicateurs. Son contrat complet est
 décrit en tête de [`optimizer/tour_format.py`](optimizer/tour_format.py), et
-c'est **la même fonction** qui met en forme la démonstration figée et une
-résolution servie en direct : les deux ont donc la même forme par construction.
+c'est **la même fonction** qui met en forme un gel hors ligne et une résolution
+servie en direct : les deux ont donc la même forme par construction.
 
-Quatre points à connaître avant de brancher cela derrière une route HTTP :
+Cinq points à connaître avant de brancher cela derrière une route HTTP :
+
+- **`hubs` commande le transfert, et rien d'autre.** À 0, aucun hub n'existe. Au
+  delà, chaque hub devient un point d'échange entre véhicules. Il n'y a pas
+  d'état intermédiaire : un hub ne porte aucune demande, le traverser sans y
+  transférer de colis ne fait qu'allonger la tournée. Sur les données jouet, les
+  transferts dégradent nettement les tournées ; c'est un résultat du solveur, et
+  c'est justement la question que `optimizer.main` sert à trancher.
 
 - **Une seule résolution.** `main` en enchaîne trois (distance de référence, puis
   avec et sans hubs). `solve_scenario` appelle `solve_vrp` une fois, ce qui
@@ -169,7 +178,7 @@ pytest -m "not slow"    # boucle rapide, environ 20 s
 ```
 
 ```
-60 passed in 51.93s
+77 passed in 53.97s
 ```
 
 Les tests couvrent l'indicateur de charge, la couche de compatibilité OR-Tools, le contrat du document de tournée et l'API de scénario de bout en bout.
@@ -177,7 +186,7 @@ Les tests couvrent l'indicateur de charge, la couche de compatibilité OR-Tools,
 Deux d'entre eux méritent d'être signalés :
 
 - une **sentinelle de régression amont** : elle vérifie que `SetAllowedVehiclesForIndex` est toujours cassé côté OR-Tools, et échouera le jour où le correctif sortira, signalant que notre contournement peut être retiré ;
-- un **test de non-régression de la démonstration** (marque `slow`) : il rejoue le scénario de référence, 45 clients et 3 véhicules avec la graine 42, et vérifie qu'il retrouve exactement les valeurs publiées (horizon 7 178 s, 140,9 km, 3 rechargements, 45 clients sur 45). Il consomme son budget de 30 secondes. La recherche étant bornée en temps, ces valeurs dépendent de la vitesse de la machine : un écart n'est pas nécessairement une régression, et le message d'échec le rappelle.
+- un **test de non-régression du scénario de vitrine** (marque `slow`) : il rejoue le scénario de référence, 45 clients et 3 véhicules avec la graine 42, et vérifie qu'il retrouve exactement les mêmes indicateurs (horizon 7 160 s, 150,3 km, 3 rechargements, 45 clients sur 45, arrêts 17/17/20). Il consomme son budget de 30 secondes. La recherche étant bornée en temps, ces valeurs dépendent de la vitesse de la machine : un écart n'est pas nécessairement une régression, et le message d'échec le rappelle.
 
 ## Architecture
 

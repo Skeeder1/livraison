@@ -55,6 +55,14 @@ Data Load → Preprocess → Solve → Post-process → Visualize
 `scenario.solve_scenario` instead; it is not safe to call concurrently in one
 process (class-level `Config`, global NumPy seed).
 
+**Removing hubs:** always through `solver.strip_hubs`. Setting `num_hubs = 0`
+leaves the hub nodes in `locations` / `demands` / `time_windows`, where they get
+no disjunction and therefore become mandatory stops. See AGENTS.md.
+
+**No thread knob:** `RoutingSearchParameters` has no `num_search_workers` field
+(checked on 9.15.6755). `lns_time_limit` defaults to 100 ms, and
+`Duration.FromSeconds` rejects floats.
+
 ## Configuration (config.py)
 
 **Key Parameters:**
