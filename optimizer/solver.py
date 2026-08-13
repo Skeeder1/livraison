@@ -89,21 +89,25 @@ def create_base_node_mapping(data, hub_indices):
     :return: Liste de correspondance base_node
     """
     base_node = list(range(data['num_nodes']))
-    
+
     for u in data['unload_depots']:
         base_node.append(data['depot'])
-        
-    for i, d in enumerate(data['hub_deposits']):
-        hub = list(hub_indices)[i]
-        base_node.append(hub)
-        
-    for i, p in enumerate(data['hub_pickups']):
-        hub = list(hub_indices)[i]
-        base_node.append(hub)
-        
+
+    # Dépôt et retrait d'un même hub sont **consécutifs** en numérotation :
+    # `setup_data_extensions` les crée par paire (deposit = n, pickup = n + 1).
+    # Les parcourir hub par hub est donc la seule façon de rester aligné sur les
+    # numéros de nœuds. Les traiter en deux passes (tous les dépôts, puis tous
+    # les retraits) décalait la correspondance dès le deuxième hub : le retrait
+    # du hub 1 pointait vers le hub 2, et le dépôt du hub 2 vers le hub 1. Les
+    # distances et les temps de transfert étaient alors calculés depuis la
+    # mauvaise position. Sans effet à un seul hub, d'où la discrétion du défaut.
+    for deposit, pickup, hub in zip(data['hub_deposits'], data['hub_pickups'], hub_indices):
+        base_node.append(hub)  # dépôt
+        base_node.append(hub)  # retrait
+
     for d in data['dummy_nodes']:
         base_node.append(data['depot'])
-        
+
     return base_node
 
 
