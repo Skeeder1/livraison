@@ -5,6 +5,22 @@ from ortools.constraint_solver import routing_enums_pb2
 from optimizer.config import Config
 
 
+def service_time(data, node):
+    """
+    Temps de service d'un nœud, proportionnel à la quantité manipulée.
+
+    Défini au niveau module, et non à l'intérieur de `create_evaluator_functions`,
+    parce que la trace de solution (`optimizer.trace`) et la carte animée ont
+    besoin exactement du même temps de service que celui qui a contraint la
+    résolution. Deux copies de cette formule finiraient par diverger.
+
+    :param data: Dictionnaire de données du problème
+    :param node: Numéro de nœud
+    :return: Temps de service en secondes
+    """
+    return abs(data['demands'][node]) * Config.SERVICE_TIME_PER_UNIT
+
+
 def setup_data_extensions(data):
     """
     Étend les données avec les nœuds additionnels pour OR-Tools.
@@ -151,10 +167,6 @@ def create_evaluator_functions(data, base_node, reload_group):
             from_node = manager.IndexToNode(from_index)
             return int(data['demands'][from_node])
         return demand_evaluator
-
-    def service_time(data, node):
-        # Utiliser la configuration centralisée pour le temps de service
-        return abs(data['demands'][node]) * Config.SERVICE_TIME_PER_UNIT
 
     def create_time_evaluator(data):
         def time_evaluator(manager, from_index, to_index):
