@@ -13,83 +13,27 @@ import numpy as np
 import matplotlib.cm as cm
 from optimizer.data_loader import load_data
 from optimizer.preprocessor import preprocess
-from optimizer.solver import solve_vrp
+from optimizer.solver import service_time, solve_vrp
 from optimizer.postprocessor import get_results
-
-def convert_to_json_serializable(obj):
-    if isinstance(obj, np.generic):
-        return obj.item()
-    elif isinstance(obj, dict):
-        return {k: convert_to_json_serializable(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_to_json_serializable(i) for i in obj]
-    elif isinstance(obj, tuple):
-        return tuple(convert_to_json_serializable(i) for i in obj)
-    else:
-        return obj
+# Attentes, charges et sérialisation JSON vivent dans `optimizer.trace` : elles
+# servent aussi à l'API `optimizer.scenario`, qui ne doit pas importer folium ni
+# matplotlib. Une seule implémentation, deux consommateurs.
+from optimizer.trace import (
+    compute_cumulative_loads,
+    compute_slacks,
+    convert_to_json_serializable,
+)
 
 def create_visualization(data, manager, routing, solution, results, output_file='vrp_visualization.html'):
     if solution is None:
         print("Cannot create visualization: No solution found")
         return
 
-    # Recompute base_node as in solver
-    base_node = list(range(data['num_nodes']))
-    for u in data['unload_depots']:
-        base_node.append(data['depot'])
     hub_start = 1 + data['num_customers']
-    for i in range(data['num_hubs']):
-        hub = hub_start + i
-        base_node.append(hub)  # deposit
-        base_node.append(hub)  # pickup
-    for d in data['dummy_nodes']:
-        base_node.append(data['depot'])
-
-    # Helper functions
-    def get_travel_time(from_node, to_node):
-        # Calcul dynamique : distance * facteur de conversion
-        b_from = base_node[from_node]
-        b_to = base_node[to_node]
-        distance = data['distance_matrix'][b_from, b_to]
-        from optimizer.config import Config
-        return int(distance * Config.DISTANCE_TO_TIME_FACTOR)
-
-    def service_time(node):
-        from optimizer.config import Config
-        return abs(data['demands'][node]) * Config.SERVICE_TIME_PER_UNIT
-
-    # Compute slacks
-    time_dimension = routing.GetDimensionOrDie('Time')
-    slacks_list = []
-    for v in range(data['num_vehicles']):
-        route_slacks = []
-        index = routing.Start(v)
-        while not routing.IsEnd(index):
-            next_index = solution.Value(routing.NextVar(index))
-            transit = service_time(manager.IndexToNode(index)) + get_travel_time(manager.IndexToNode(index), manager.IndexToNode(next_index))
-            slack = solution.Value(time_dimension.CumulVar(next_index)) - solution.Value(time_dimension.CumulVar(index)) - transit
-            route_slacks.append(max(0, slack))  # Ensure non-negative
-            index = next_index
-        slacks_list.append(route_slacks)
-    results['per_livreur']['slacks'] = slacks_list
-
-    # Compute cumulative loads for visualization (use real solver data)
-    # current_loads from postprocessor contains the actual load carried at each step
-    cumulative_loads = []
     num_real_vehicles = len(data['vehicle_capacities'])
 
-    for v in range(data['num_vehicles']):
-        if v < num_real_vehicles:
-            # Véhicule réel - utiliser les charges transportées du postprocessor
-            loads_data = results['per_livreur']['current_loads'][v]
-            cumulative_loads.append(loads_data)
-        else:
-            # Véhicule dummy - capacité toujours 0
-            route = results['per_livreur']['routes'][v]
-            dummy_loads = [0] * len(route)
-            cumulative_loads.append(dummy_loads)
-
-    results['per_livreur']['cumulative_loads'] = cumulative_loads
+    results['per_livreur']['slacks'] = compute_slacks(data, manager, routing, solution)
+    results['per_livreur']['cumulative_loads'] = compute_cumulative_loads(data, results)
 
     # Compute transfers
     transfers = []
@@ -121,7 +65,7 @@ def create_visualization(data, manager, routing, solution, results, output_file=
         slacks = results['per_livreur']['slacks'][v]
         for j in range(len(route) - 1):
             node = route[j]
-            time_spent[node] += service_time(node) + slacks[j]
+            time_spent[node] += service_time(data, node) + slacks[j]
     heat_data = [[data['locations'][i][0], data['locations'][i][1], time_spent[i]] for i in range(len(time_spent)) if time_spent[i] > 0]
 
     # Create map

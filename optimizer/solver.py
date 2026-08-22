@@ -5,6 +5,65 @@ from ortools.constraint_solver import routing_enums_pb2
 from optimizer.config import Config
 
 
+def service_time(data, node):
+    """
+    Temps de service d'un nœud, proportionnel à la quantité manipulée.
+
+    Défini au niveau module, et non à l'intérieur de `create_evaluator_functions`,
+    parce que la trace de solution (`optimizer.trace`) et la carte animée ont
+    besoin exactement du même temps de service que celui qui a contraint la
+    résolution. Deux copies de cette formule finiraient par diverger.
+
+    :param data: Dictionnaire de données du problème
+    :param node: Numéro de nœud
+    :return: Temps de service en secondes
+    """
+    return abs(data['demands'][node]) * Config.SERVICE_TIME_PER_UNIT
+
+
+def strip_hubs(data):
+    """
+    Retourne une copie des données d'où les hubs sont réellement absents.
+
+    Mettre `num_hubs` à 0 ne suffit pas, et le croire a produit un défaut
+    silencieux. Les positions des hubs restent dans `locations`, `demands` et
+    `time_windows` ; le modèle les crée donc en nœuds ordinaires. Or
+    `configure_constraints_and_penalties` ne pose de disjonction que sur
+    `range(hub_start, hub_start + num_hubs)`, c'est-à-dire sur rien. Privés de
+    disjonction, ces nœuds ne peuvent plus être abandonnés : ils deviennent des
+    passages **obligatoires**. Mesure sur le scénario de référence : 55
+    disjonctions au lieu de 59, et `ActiveVar` bornée à [1, 1] pour les deux
+    nœuds de hub.
+
+    Conséquence : la comparaison « avec ou sans hubs » opposait la version avec
+    hubs à une version qui traversait quand même les hubs, sous contrainte. Les
+    tournées passaient par les hubs parce qu'elles y étaient forcées, pas parce
+    qu'un détour avait été évalué puis retenu. Et comme `get_activated_hubs`
+    boucle sur `num_hubs`, l'indicateur annonçait sereinement 0 hub activé.
+
+    Le retrait porte donc sur toutes les structures indexées par numéro de nœud.
+    Les listes sont recopiées : `solve_vrp` mute son argument, une tranche
+    partagée serait allongée par la résolution.
+
+    :param data: Données chargées, hubs compris
+    :return: Copie sans aucun hub, prête pour `solve_vrp`
+    """
+    num_nodes = 1 + data['num_customers']
+
+    stripped = dict(data)
+    stripped['num_hubs'] = 0
+    stripped['hubs'] = []
+    stripped['num_nodes'] = num_nodes
+    stripped['locations'] = list(data['locations'][:num_nodes])
+    stripped['demands'] = list(data['demands'][:num_nodes])
+    stripped['time_windows'] = list(data['time_windows'][:num_nodes])
+    stripped['distance_matrix'] = data['distance_matrix'][:num_nodes, :num_nodes]
+    if 'time_matrix' in data:
+        stripped['time_matrix'] = data['time_matrix'][:num_nodes, :num_nodes]
+
+    return stripped
+
+
 def setup_data_extensions(data):
     """
     Étend les données avec les nœuds additionnels pour OR-Tools.
@@ -89,21 +148,25 @@ def create_base_node_mapping(data, hub_indices):
     :return: Liste de correspondance base_node
     """
     base_node = list(range(data['num_nodes']))
-    
+
     for u in data['unload_depots']:
         base_node.append(data['depot'])
-        
-    for i, d in enumerate(data['hub_deposits']):
-        hub = list(hub_indices)[i]
-        base_node.append(hub)
-        
-    for i, p in enumerate(data['hub_pickups']):
-        hub = list(hub_indices)[i]
-        base_node.append(hub)
-        
+
+    # Dépôt et retrait d'un même hub sont **consécutifs** en numérotation :
+    # `setup_data_extensions` les crée par paire (deposit = n, pickup = n + 1).
+    # Les parcourir hub par hub est donc la seule façon de rester aligné sur les
+    # numéros de nœuds. Les traiter en deux passes (tous les dépôts, puis tous
+    # les retraits) décalait la correspondance dès le deuxième hub : le retrait
+    # du hub 1 pointait vers le hub 2, et le dépôt du hub 2 vers le hub 1. Les
+    # distances et les temps de transfert étaient alors calculés depuis la
+    # mauvaise position. Sans effet à un seul hub, d'où la discrétion du défaut.
+    for deposit, pickup, hub in zip(data['hub_deposits'], data['hub_pickups'], hub_indices):
+        base_node.append(hub)  # dépôt
+        base_node.append(hub)  # retrait
+
     for d in data['dummy_nodes']:
         base_node.append(data['depot'])
-        
+
     return base_node
 
 
@@ -147,10 +210,6 @@ def create_evaluator_functions(data, base_node, reload_group):
             from_node = manager.IndexToNode(from_index)
             return int(data['demands'][from_node])
         return demand_evaluator
-
-    def service_time(data, node):
-        # Utiliser la configuration centralisée pour le temps de service
-        return abs(data['demands'][node]) * Config.SERVICE_TIME_PER_UNIT
 
     def create_time_evaluator(data):
         def time_evaluator(manager, from_index, to_index):
@@ -444,7 +503,28 @@ def add_hub_constraints(routing, manager, data, time_dimension, capacity_dimensi
 def configure_search_parameters(data):
     """
     Configure les paramètres de recherche pour le solver.
-    
+
+    Deux budgets sont réglables par clé de `data`, ce qui permet à un appelant
+    exposé au réseau (`optimizer.scenario`) de borner le calcul sans toucher à la
+    configuration globale du processus :
+
+    * `time_limit` : budget total, en secondes. `FromSeconds` n'accepte qu'un
+      entier ; un flottant lève `TypeError: 'float' object cannot be interpreted
+      as an integer`. Pour un budget inférieur à la seconde, passer par
+      `FromMilliseconds`.
+    * `lns_time_limit_ms` : budget d'une passe de recherche à grand voisinage.
+      Relevé sur OR-Tools 9.15.6755 : la valeur par défaut vaut **100 ms**
+      (`seconds=0, nanos=100_000_000`), et non 100 s. Elle ne peut donc pas
+      prolonger la recherche au-delà du budget total. L'épingler protège d'un
+      changement de valeur par défaut d'une version à l'autre.
+
+    **Il n'existe pas de réglage de parallélisme.** `RoutingSearchParameters`
+    n'a pas de champ `num_search_workers` : la liste complète de ses champs a été
+    vérifiée sur 9.15.6755. La recherche CP classique est mono-thread. Le seul
+    champ voisin est `sat_parameters.num_workers`, qui ne concerne que les
+    chemins CP-SAT, inactifs ici (`use_cp_sat` vaut BOOL_FALSE par défaut). Ne
+    pas repartir à sa recherche.
+
     :param data: Dictionnaire de données
     :return: Paramètres de recherche configurés
     """
@@ -452,10 +532,14 @@ def configure_search_parameters(data):
     # Use PARALLEL_CHEAPEST_INSERTION for better initial vehicle balance
     search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
     search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-    
-    time_limit = data.get('time_limit', Config.TIME_TO_SOLVE)
+
+    time_limit = int(data.get('time_limit', Config.TIME_TO_SOLVE))
     search_parameters.time_limit.FromSeconds(time_limit)
-    
+
+    lns_time_limit_ms = data.get('lns_time_limit_ms')
+    if lns_time_limit_ms is not None:
+        search_parameters.lns_time_limit.FromMilliseconds(int(lns_time_limit_ms))
+
     return search_parameters
 
 
@@ -529,15 +613,16 @@ def solve_vrp_with_optimal_hubs(data):
     visualisation avec un IndexError sur les routes.
     """
     from optimizer.postprocessor import get_results
-    import copy
 
     print("\n🔍 Comparaison avec/sans hubs pour optimiser le temps total de livraison...")
 
     # ===== SOLUTION SANS HUBS =====
     print("\n📊 Résolution SANS hubs...")
-    data_no_hubs = copy.deepcopy(data)
-    data_no_hubs['num_hubs'] = 0
-    data_no_hubs['hubs'] = []
+    # `strip_hubs` retire réellement les nœuds de hub. La version précédente se
+    # contentait de mettre `num_hubs` à 0 sur une copie profonde, ce qui laissait
+    # les hubs dans le modèle en passages obligatoires : la branche « sans hubs »
+    # traversait les hubs. Voir `strip_hubs`.
+    data_no_hubs = strip_hubs(data)
 
     manager_no_hubs, routing_no_hubs, solution_no_hubs = solve_vrp(data_no_hubs)
 

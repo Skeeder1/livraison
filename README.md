@@ -82,10 +82,20 @@ git clone https://github.com/Skeeder1/livraison.git
 cd livraison
 
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[cli,dev]"
 ```
 
 No API key is required: routing uses the public OSRM server and basemaps come from OpenStreetMap.
+
+The `cli` extra brings the interactive map, the charts and the coloured console
+output. Without it the install is the solver and its data, which is what a
+service calling `optimizer.scenario` wants: 139 MB instead of 320, and nothing
+installed that it never runs.
+
+```bash
+pip install .              # solver only (ortools, numpy)
+pip install ".[analysis]"  # + aggregation of measurement campaigns
+```
 
 ## Usage
 
@@ -108,6 +118,60 @@ DEPOT_POSITION = (48.8566, 2.3522)   # Paris, Île de la Cité
 RANDOM_SEED   = 42          # None for a different scenario each run
 ```
 
+### Solving a scenario from code
+
+`python -m optimizer.main` is a program: it regenerates the data, solves, writes
+`vrp_visualization.html`, colours its output and reconfigures the standard
+streams. None of that belongs in a web service. To call the solver from code,
+`optimizer/scenario.py` exposes the same computation as a function:
+
+```python
+from pathlib import Path
+from optimizer.scenario import solve_scenario
+
+tour = solve_scenario(
+    {
+        "customers": 45,                # customers to serve
+        "vehicles": 3,                  # couriers
+        "hubs": 0,                      # transfer points between vehicles
+        "capacity": 10,                 # parcels per vehicle
+        "time_windows_binding": False,  # genuinely tight time windows
+        "budget_seconds": 30,           # search budget
+    },
+    workdir=Path("/tmp/scenario-1234"),
+)
+
+print(tour["stats"]["customersServed"], "customers served")
+print(tour["stats"]["roadKm"], "km driven, horizon", tour["horizon"], "s")
+```
+
+The returned document stands on its own: geolocated stops, legs drawn on the
+road network, loads, waits and indicators. Its full contract is described at the
+top of [`optimizer/tour_format.py`](optimizer/tour_format.py), and it is **the
+same function** that shapes an offline freeze and a solve served live, so the
+two have the same form by construction.
+
+Five things to know before putting this behind an HTTP route:
+
+- **`hubs` commands transfers, and nothing else.** At 0 no hub exists. Above it,
+  each hub becomes an exchange point between vehicles. There is no intermediate
+  state: a hub carries no demand, so driving through one without transferring
+  anything only lengthens the route. On the toy data, transfers clearly degrade
+  the tours; that is a result of the solver, and it is exactly the question
+  `optimizer.main` exists to settle.
+- **One solve.** `main` chains three (baseline distance, then with and without
+  hubs). `solve_scenario` calls `solve_vrp` once, which divides the response
+  time by three. In exchange the hub strategy is no longer arbitrated: the
+  document describes the configuration asked for, not the better of the two.
+- **No concurrent calls in one process.** `Config` holds class attributes, and
+  generating the data seeds NumPy's global random generator. Two simultaneous
+  calls would corrupt each other. Serialise the calls, or isolate them in
+  subprocesses.
+- **Parameters are bounded server side** by `SCENARIO_LIMITS`, before any
+  computation: a scenario is CPU time.
+- **`workdir` is supplied by the caller.** The six data files are written there
+  and read back; nothing depends on the process working directory.
+
 ### Regenerating the demo video
 
 ```bash
@@ -120,14 +184,20 @@ The script drives the time slider frame by frame in a headless browser, then ass
 ## Tests
 
 ```bash
-pytest
+pytest                  # everything, about 55 s
+pytest -m "not slow"    # fast loop, about 20 s
 ```
 
 ```
-14 passed in 0.18s
+77 passed in 53.27s
 ```
 
-The tests cover the load-imbalance indicator and the OR-Tools compatibility layer. One of them is an **upstream regression sentinel**: it asserts that `SetAllowedVehiclesForIndex` is still broken on the OR-Tools side, and will fail the day the fix ships — signalling that our workaround can be removed.
+The tests cover the load-imbalance indicator, the OR-Tools compatibility layer, the tour document contract and the scenario API end to end.
+
+Two of them are worth pointing out:
+
+- an **upstream regression sentinel**: it asserts that `SetAllowedVehiclesForIndex` is still broken on the OR-Tools side, and will fail the day the fix ships, signalling that our workaround can be removed;
+- a **non-regression test on the showcase scenario** (marked `slow`): it replays the reference scenario, 45 customers and 3 vehicles on seed 42, and checks that it lands on the same indicators. It spends its full 30 second budget. The search being time-bounded, those values depend on machine speed: a deviation is not necessarily a regression, and the failure message says so.
 
 ## Architecture
 
@@ -139,6 +209,9 @@ optimizer/
 ├── preprocessor.py     # Baseline distance computation
 ├── solver.py           # OR-Tools model: dimensions, constraints, hubs
 ├── postprocessor.py    # Route extraction and indicator computation
+├── trace.py            # Reading a solution: waits, loads, JSON
+├── scenario.py         # API: a scenario in, a tour document out
+├── tour_format.py      # Contract of the document served to a web consumer
 ├── print_solution.py   # Animated map rendering (folium / Leaflet)
 ├── road_routing.py     # Real road-network itineraries (OSRM)
 ├── stats.py            # Comparative analysis
@@ -146,7 +219,15 @@ optimizer/
 
 tools/capture_demo.py   # Demo capture to frames and video
 tests/unit/             # Unit tests
+tests/integration/      # End-to-end tests of the scenario API
+features-inventory.md   # Inventory of the features and their tests
 ```
+
+`trace.py` and `tour_format.py` exist for a precise reason: without them the
+animated map and the API would each carry a copy of the same computation, and
+the two would eventually drift. The Leaflet rendering now imports the same
+functions the server does, and the only dependency on folium or matplotlib is
+left in `print_solution.py`.
 
 ## Notable technical choices
 

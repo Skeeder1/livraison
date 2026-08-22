@@ -7,7 +7,8 @@ ce fichier retient ce qui n'est pas déductible du code.
 
 ```bash
 python -m optimizer.main     # résout et génère vrp_visualization.html
-pytest                       # 14 tests
+pytest                       # 77 tests, environ 55 s
+pytest -m "not slow"         # sans la résolution de référence, environ 20 s
 python tools/capture_demo.py # regénère la démo animée (images + mp4 + gif)
 ```
 
@@ -33,6 +34,61 @@ amont sortira : ce sera le signal pour retirer le contournement.
 local en fait une variable locale à toute la fonction, y compris avant la ligne
 d'import — ce qui provoque un `UnboundLocalError`. L'import est au niveau module.
 
+**Retirer les hubs se fait avec `strip_hubs`, jamais en posant `num_hubs = 0`.**
+Les nœuds de hub vivent dans `locations`, `demands` et `time_windows` : baisser
+le compteur les laisse dans le modèle, et comme les disjonctions ne sont posées
+que sur `range(hub_start, hub_start + num_hubs)`, ils n'en reçoivent aucune. Un
+nœud sans disjonction est **obligatoire**. La variante « sans hubs » de
+`solve_vrp_with_optimal_hubs` traversait ainsi les hubs sous contrainte pendant
+que `get_activated_hubs`, qui boucle sur `num_hubs`, annonçait 0 hub activé.
+C'est de cet état défectueux que vient l'instantané publié dans le portfolio
+(`delivery-tour.json` : horizon 7178, 140,9 km, arrêts 20/17/19, 2 passages en
+hub). Il n'est plus reproductible depuis le correctif, et c'était le but.
+
+Pour vérifier ce genre de mécanisme, deux mesures non ambiguës : le nombre de
+disjonctions (`routing.GetNumberOfDisjunctions()`, attendu = clients +
+rechargements + hubs + fictifs) et le domaine de `ActiveVar` après
+`CloseModel()` : `Min() == 1` signifie « nœud obligatoire ». Éviter
+`GetDisjunctionIndices`, surchargé en C++ par identifiant de disjonction et par
+index de nœud : depuis Python l'appel est ambigu et sa réponse ininterprétable.
+
+**Un hub ne sert qu'au transfert entre véhicules.** Il ne porte aucune demande :
+le traverser sans y échanger de colis ne fait qu'allonger la tournée. Dans
+`optimizer.scenario`, `hubs` pilote donc seul le comportement (0 = aucun hub,
+au-delà = transferts actifs) ; il n'existe pas d'état intermédiaire.
+
+**Ne pas appeler `solve_scenario` en parallèle dans un même processus.**
+`Config` porte des attributs de **classe** et `create_toy_data` initialise le
+générateur aléatoire **global** de NumPy. La fonction restaure `Config` en
+sortie, ce qui suffit au séquentiel et à rien d'autre. Sérialiser, ou passer par
+des sous-processus.
+
+**Le budget de recherche change la solution.** `GUIDED_LOCAL_SEARCH` consomme
+tout le temps qui lui est donné : 10 s et 30 s ne produisent pas la même
+tournée, et pas non plus des tournées comparables en qualité (relevé avec les
+hubs encore obligatoires : 30 s donnait un horizon de 7 178 s, 5 s de 8 644 s,
+10 s de 11 832 s ; la qualité n'est donc pas monotone en budget). Le test de
+référence n'est reproductible qu'à budget **et** vitesse machine égaux.
+
+**Il n'existe pas de réglage de parallélisme.** `RoutingSearchParameters` n'a
+**aucun** champ `num_search_workers` : liste des champs vérifiée sur OR-Tools
+9.15.6755. La recherche CP classique est mono-thread. Le champ voisin
+`sat_parameters.num_workers` ne concerne que les chemins CP-SAT, inactifs ici
+(`use_cp_sat` = BOOL_FALSE). Ne pas repartir à sa recherche.
+
+**`lns_time_limit` vaut 100 millisecondes par défaut**, pas 100 secondes
+(`seconds=0, nanos=100_000_000` sur 9.15.6755) : elle ne peut pas faire déborder
+le budget total. Et `Duration.FromSeconds` n'accepte qu'un entier :
+`FromSeconds(1.5)` lève `TypeError` ; pour un budget inférieur à la seconde,
+passer par `FromMilliseconds`.
+
+**Le cache OSRM ne doit jamais faire échouer un calcul.** Son écriture était
+hors du bloc protégé : sur un système de fichiers en lecture seule, un appel
+OSRM **réussi** levait `OSError` et emportait la requête, alors que le chemin
+d'échec réseau, lui, était traité proprement. Lecture et écriture sont désormais
+protégées, l'écriture est atomique, et `OSRM_CACHE_DIR` déplace le cache là où
+l'on peut écrire.
+
 **Le dépôt vient de `Config.DEPOT_POSITION`.** Il était codé en dur à `(0.0, 0.0)`
 dans `data_loader.py` — Null Island, en plein Atlantique. Ne pas réintroduire de
 coordonnée en dur : les données jouet et le chargeur doivent rester cohérents.
@@ -47,6 +103,12 @@ coordonnée en dur : les données jouet et le chargeur doivent rester cohérents
 - Les artefacts générés (`vrp_visualization.html`, `optimizer/tests/toy_data/`,
   `.cache/`) ne sont pas versionnés.
 - Commentaires et documentation en français.
+- Toute fonctionnalité terminée est ajoutée à `features-inventory.md`, avec son
+  point d'entrée et ses tests.
+- Le format du document de tournée (`optimizer/tour_format.py`) est un contrat
+  public : la page de démonstration du portfolio en dépend. Sept invariants y
+  sont listés et vérifiés par les tests. Ajouter une clé est sans risque, en
+  renommer ou en retirer une casse le consommateur.
 
 ## Chantiers ouverts
 

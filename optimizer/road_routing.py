@@ -15,6 +15,9 @@ Choix techniques
   client→client tout en divisant le nombre d'appels par ~18.
 * **Cache disque** : le serveur public est limité en débit et les données jouet
   sont régénérées à chaque exécution. Le cache rend les relances instantanées.
+  Il est facultatif : ni sa lecture ni son écriture ne peuvent faire échouer un
+  calcul. Son emplacement se règle par `OSRM_CACHE_DIR`, ce qui compte sur un
+  hébergement où seul `/tmp` est accessible en écriture.
 * **Repli silencieux en ligne droite** : sans réseau, le projet doit continuer à
   tourner. On perd le réalisme du tracé, jamais l'exécution.
 """
@@ -23,21 +26,86 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import tempfile
 import urllib.error
 import urllib.request
 
 OSRM_BASE_URL = os.environ.get(
     "OSRM_BASE_URL", "https://router.project-osrm.org"
 )
-CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache", "osrm")
+DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache", "osrm")
+#: Conservé pour les appelants qui l'importaient. Utiliser `cache_dir()`, qui
+#: relit l'environnement à chaque appel.
+CACHE_DIR = DEFAULT_CACHE_DIR
 REQUEST_TIMEOUT = 30
+
+
+def cache_dir():
+    """
+    Répertoire du cache d'itinéraires.
+
+    Lu à chaque appel plutôt que figé à l'import : sur un hébergement sans
+    système de fichiers inscriptible ailleurs que dans `/tmp`, la variable
+    `OSRM_CACHE_DIR` doit pouvoir être posée après le chargement du module.
+    """
+    return os.environ.get("OSRM_CACHE_DIR", DEFAULT_CACHE_DIR)
 
 
 def _cache_path(waypoints):
     """Chemin de cache déterministe pour une suite de points de passage."""
     key = json.dumps([[round(lat, 6), round(lon, 6)] for lat, lon in waypoints])
     digest = hashlib.sha256(key.encode()).hexdigest()[:16]
-    return os.path.join(CACHE_DIR, f"{digest}.json")
+    return os.path.join(cache_dir(), f"{digest}.json")
+
+
+def _read_cache(cache_file):
+    """
+    Lit une entrée de cache, ou renvoie None si elle est absente ou illisible.
+
+    Un fichier tronqué par une exécution interrompue ne doit pas faire échouer
+    la requête : le calcul repart vers OSRM, et l'entrée sera réécrite.
+    """
+    try:
+        with open(cache_file, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        print(f"   ⚠️  Cache OSRM illisible ({exc}), recalcul.")
+        return None
+
+
+def _write_cache(cache_file, legs):
+    """
+    Enregistre une entrée de cache, sans jamais faire échouer l'appelant.
+
+    Deux précautions :
+
+    * **l'écriture est facultative.** Sur un système de fichiers en lecture
+      seule, `makedirs` lève `OSError: Read-only file system`. Cette écriture se
+      trouvait hors du `try` : un appel OSRM **réussi** faisait alors échouer la
+      requête entière, alors que le chemin d'échec, lui, était protégé. Le cas
+      typique est l'exécution sans serveur, où seul `/tmp` est inscriptible.
+    * **l'écriture est atomique.** Un fichier temporaire puis `os.replace`,
+      opération atomique sur un même système de fichiers. Deux résolutions
+      simultanées portant sur la même tournée ne peuvent plus entrelacer leurs
+      écritures et laisser un JSON tronqué derrière elles.
+    """
+    directory = os.path.dirname(cache_file)
+    handle = temporary = None
+    try:
+        os.makedirs(directory, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(dir=directory, suffix=".tmp")
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(legs, handle)
+        os.replace(temporary, cache_file)
+    except OSError as exc:
+        print(f"   ⚠️  Cache OSRM non écrit ({exc}), le tracé reste valide.")
+        if temporary is not None and os.path.exists(temporary):
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
 
 
 def _straight_legs(waypoints):
@@ -60,9 +128,9 @@ def fetch_route_legs(waypoints):
         return []
 
     cache_file = _cache_path(waypoints)
-    if os.path.exists(cache_file):
-        with open(cache_file, "r", encoding="utf-8") as handle:
-            return json.load(handle)
+    cached = _read_cache(cache_file)
+    if cached is not None:
+        return cached
 
     # OSRM attend des couples lon,lat — l'inverse de la convention usuelle.
     coords = ";".join(f"{lon:.6f},{lat:.6f}" for lat, lon in waypoints)
@@ -98,9 +166,7 @@ def fetch_route_legs(waypoints):
     straight = _straight_legs(waypoints)
     legs = [leg if leg else straight[i] for i, leg in enumerate(legs)]
 
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    with open(cache_file, "w", encoding="utf-8") as handle:
-        json.dump(legs, handle)
+    _write_cache(cache_file, legs)
 
     return legs
 

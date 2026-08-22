@@ -1,28 +1,42 @@
 [project]
 name = "cvrptw-optimizer"
 version = "1.0.0"
-description = "Delivery route optimizer for the CVRPTW with mid-route reloading at hubs, solved with Google OR-Tools and replayed on an animated map."
+description = "Optimiseur de tournées de livraison (CVRPTW) avec rechargement en hub, basé sur Google OR-Tools"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 
+# Le noyau, c'est-à-dire tout ce qu'il faut pour générer un scénario, le résoudre
+# et en sortir un document de tournée : `optimizer.scenario` et ce qu'il importe.
+#
+# Le rendu et les campagnes de mesure sont en extras parce qu'ils ne sont pas du
+# même ordre de grandeur. Un service web qui appelle `solve_scenario` installe
+# 139 Mo avec ce noyau seul ; ajouter pandas, matplotlib, seaborn et folium le
+# porte au-delà de ce qu'une fonction serverless accepte, pour du code qu'il
+# n'appelle jamais. Le programme en ligne de commande, lui, veut `[cli]`.
 dependencies = [
     # Solveur de routage sous contraintes.
     # Note : ne pas descendre sous 9.15 sans revoir optimizer/solver.py, et voir
     # `set_allowed_vehicles` pour la régression SWIG de la 9.15 (or-tools#4982).
     "ortools>=9.15",
     "numpy>=1.24",
-    "pandas>=2.0",
-    # Rendu de la carte interactive des tournées.
-    "folium>=0.15",
-    # Graphiques d'analyse.
-    "matplotlib>=3.7",
-    "seaborn>=0.12",
-    # Sortie console colorée du rapport de solution.
-    "colorama>=0.4",
 ]
 
 [project.optional-dependencies]
+# Tout ce que `cvrptw-solve` utilise en plus du noyau : la sortie console
+# colorée, la carte interactive et les graphiques du rapport.
+cli = [
+    "colorama>=0.4",
+    "folium>=0.15",
+    "matplotlib>=3.7",
+]
+# `optimizer.stats` seul : agrégation de campagnes de mesure en tableau et
+# graphiques comparatifs.
+analysis = [
+    "pandas>=2.0",
+    "seaborn>=0.12",
+    "matplotlib>=3.7",
+]
 dev = [
     "pytest>=8.0",
 ]
@@ -37,6 +51,13 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short --strict-markers"
+markers = [
+    # Tests qui font tourner le solveur jusqu'au bout de son budget. Le scénario
+    # de référence verrouille les valeurs publiées dans la démonstration : il
+    # coûte 30 s, et reste dans l'exécution par défaut pour cette raison.
+    # `pytest -m "not slow"` donne la boucle rapide.
+    "slow: exécute une vraie résolution OR-Tools (plusieurs dizaines de secondes)",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
