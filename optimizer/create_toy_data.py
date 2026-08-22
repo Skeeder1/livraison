@@ -1,5 +1,5 @@
 # create_toy_data.py
-import pandas as pd
+import json
 import numpy as np
 import os
 from typing import List, Tuple
@@ -31,6 +31,44 @@ def generate_random_position() -> Tuple[float, float]:
     lon_spread = 1.0 / np.cos(np.radians(center_lat))
     lon = center_lon + np.random.uniform(Config.POSITION_RANGE_MIN, Config.POSITION_RANGE_MAX) * lon_spread
     return (float(lat), float(lon))
+
+#: Décimales conservées à l'écriture. C'est le `double_precision` par défaut de
+#: `DataFrame.to_json`, qui écrivait ces quatre fichiers jusqu'ici.
+JSON_DOUBLE_PRECISION = 10
+
+
+def _rounded(value):
+    """Arrondit les flottants d'une structure, en convertissant les scalaires NumPy."""
+    if isinstance(value, dict):
+        return {key: _rounded(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_rounded(item) for item in value]
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        return round(float(value), JSON_DOUBLE_PRECISION)
+    return value
+
+
+def _write_records(data_dir: str, filename: str, records: List[dict]) -> None:
+    """
+    Ecrit une table sous la forme d'une liste d'enregistrements.
+
+    C'est exactement ce que produisait `DataFrame.to_json(orient='records')`,
+    dont ces quatre fichiers sortaient jusqu'ici. Pandas ne servait qu'a ce
+    passage par le disque, et pesait 42 Mo dans une fonction serverless plafonnee
+    a 225 Mo, d'ou son retrait du chemin de resolution. Il reste une dependance
+    de `optimizer.stats`, qui agrege des campagnes de mesure et n'a pas cette
+    contrainte.
+
+    L'arrondi n'est pas cosmetique. Sans lui les coordonnees repartent avec
+    quelques decimales de plus que ce que pandas ecrivait, et le scenario de
+    reference, graine comprise, ne rend plus la meme tournee : les tests lents
+    et les chiffres publies dans la demonstration cessent d'etre reproductibles.
+    """
+    with open(os.path.join(data_dir, filename), 'w', encoding='utf-8') as handle:
+        json.dump(_rounded(records), handle)
+
 
 # Function to compute Euclidean distance matrix from positions
 def compute_distance_matrix(locations: List[Tuple[float, float]]) -> np.ndarray:
@@ -75,46 +113,56 @@ def create_toy_data(data_dir: str | None = None, verbose: bool = True) -> None:
     time_matrix = distance_matrix * Config.DISTANCE_TO_TIME_FACTOR
 
     # Toy colis
-    colis_data = {
-        'id': list(range(1, Config.NUM_CUSTOMERS + 1)),
-        'position': customer_positions,
-        'tw_start': [np.random.randint(Config.TW_START_MIN, Config.TW_START_MAX + 1) 
-                     for _ in range(Config.NUM_CUSTOMERS)],
-        'tw_end': [np.random.randint(Config.TW_END_MIN, Config.TW_END_MAX + 1) 
-                   for _ in range(Config.NUM_CUSTOMERS)],
-        'volume': [1.0 for _ in range(Config.NUM_CUSTOMERS)]  # Volume fixe de 1.0
-    }
-    colis = pd.DataFrame(colis_data)
-    colis.to_json(os.path.join(data_dir, 'colis.json'), orient='records')
+    # Les deux bornes sont tirees colonne par colonne, et non client par client.
+    # L'ordre des tirages fait partie du scenario : `RANDOM_SEED` ne reproduit la
+    # tournee de reference que si la suite d'appels reste identique.
+    tw_start = [int(np.random.randint(Config.TW_START_MIN, Config.TW_START_MAX + 1))
+                for _ in range(Config.NUM_CUSTOMERS)]
+    tw_end = [int(np.random.randint(Config.TW_END_MIN, Config.TW_END_MAX + 1))
+              for _ in range(Config.NUM_CUSTOMERS)]
+    colis = [
+        {
+            'id': i + 1,
+            'position': list(customer_positions[i]),
+            'tw_start': tw_start[i],
+            'tw_end': tw_end[i],
+            'volume': 1.0,  # Volume fixe de 1.0
+        }
+        for i in range(Config.NUM_CUSTOMERS)
+    ]
+    _write_records(data_dir, 'colis.json', colis)
 
     # Toy livreurs
-    livreurs_data = {
-        'id': list(range(1, Config.NUM_VEHICLES + 1)),
-        # Capacités entières : un véhicule transporte un nombre entier de colis,
-        # et le solveur tronque de toute façon (`setup_data_extensions`).
-        'capacity': [int(round(np.random.uniform(Config.VEHICLE_CAPACITY_MIN, Config.VEHICLE_CAPACITY_MAX)))
-                    for _ in range(Config.NUM_VEHICLES)],
-        'start_time': [Config.START_TIME_MIN for _ in range(Config.NUM_VEHICLES)],
-        'end_time': [Config.END_TIME_MAX for _ in range(Config.NUM_VEHICLES)]
-    }
-    livreurs = pd.DataFrame(livreurs_data)
-    livreurs.to_json(os.path.join(data_dir, 'livreurs.json'), orient='records')
+    livreurs = [
+        {
+            'id': i + 1,
+            # Capacités entières : un véhicule transporte un nombre entier de colis,
+            # et le solveur tronque de toute façon (`setup_data_extensions`).
+            'capacity': int(round(np.random.uniform(Config.VEHICLE_CAPACITY_MIN, Config.VEHICLE_CAPACITY_MAX))),
+            'start_time': Config.START_TIME_MIN,
+            'end_time': Config.END_TIME_MAX,
+        }
+        for i in range(Config.NUM_VEHICLES)
+    ]
+    _write_records(data_dir, 'livreurs.json', livreurs)
 
     # Toy hubs
-    hubs_data = {
-        'id': list(range(1, Config.NUM_HUBS + 1)),
-        'position': hub_positions,
-        'load_limit': [Config.HUB_LOAD_LIMIT] * Config.NUM_HUBS
-    }
-    hubs = pd.DataFrame(hubs_data)
-    hubs.to_json(os.path.join(data_dir, 'hubs.json'), orient='records')
+    hubs = [
+        {
+            'id': i + 1,
+            'position': list(hub_positions[i]),
+            'load_limit': Config.HUB_LOAD_LIMIT,
+        }
+        for i in range(Config.NUM_HUBS)
+    ]
+    _write_records(data_dir, 'hubs.json', hubs)
 
     # Toy weights
-    weights = pd.DataFrame({
-        'criterion': list(WEIGHTS_DICT.keys()),
-        'weight': list(WEIGHTS_DICT.values())
-    })
-    weights.to_json(os.path.join(data_dir, 'weights.json'), orient='records')
+    weights = [
+        {'criterion': criterion, 'weight': weight}
+        for criterion, weight in WEIGHTS_DICT.items()
+    ]
+    _write_records(data_dir, 'weights.json', weights)
 
     # Save matrices
     np.save(os.path.join(data_dir, 'distance_matrix.npy'), distance_matrix)

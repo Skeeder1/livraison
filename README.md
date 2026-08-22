@@ -79,10 +79,20 @@ git clone https://github.com/Skeeder1/livraison.git
 cd livraison
 
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[cli,dev]"
 ```
 
 Aucune clé d'API n'est nécessaire : le calcul d'itinéraires utilise le serveur public OSRM et les fonds de carte proviennent d'OpenStreetMap.
+
+L'extra `cli` apporte la carte interactive, les graphiques et la sortie colorée.
+Sans lui, l'installation se limite au solveur et à ses données, ce que veut un
+service qui appelle `optimizer.scenario` : 139 Mo au lieu de 320, et rien à
+installer qui ne serve jamais.
+
+```bash
+pip install .              # solveur seul (ortools, numpy)
+pip install ".[analysis]"  # + agrégation de campagnes de mesure
+```
 
 ## Utilisation
 

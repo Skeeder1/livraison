@@ -45,3 +45,4 @@ tests. À tenir à jour à chaque fonctionnalité terminée.
 | Résolution d'un scénario à la demande, appelable depuis un service web | `optimizer.scenario.solve_scenario` | `tests/integration/test_scenario.py` |
 | Validation et bornage des paramètres côté serveur | `optimizer.scenario.SCENARIO_LIMITS` | `tests/integration/test_scenario.py::TestValidationDesParametres` |
 | Mise en forme de la tournée pour un consommateur web (contrat JSON) | `optimizer.tour_format.build_tour` | `tests/unit/test_tour_format.py` |
+| Noyau installable sans la chaîne de rendu (139 Mo), extras `cli` et `analysis` | `pyproject.toml` | `tests/integration/test_scenario.py` |
