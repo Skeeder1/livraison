@@ -93,6 +93,28 @@ l'on peut écrire.
 dans `data_loader.py` — Null Island, en plein Atlantique. Ne pas réintroduire de
 coordonnée en dur : les données jouet et le chargeur doivent rester cohérents.
 
+**L'objectif est calibré pour une flotte, pas pour un véhicule.**
+`TIME_SPAN_COEFFICIENT = 200` pose un coût sur l'étendue globale de la dimension
+Time. Avec plusieurs véhicules, ce terme équilibre les tournées entre elles ;
+avec un seul, l'étendue globale **est** cette tournée, et le terme dégénère en
+péage forfaitaire sur le temps de conduite. Face aux 100 000 de pénalité pour
+abandonner un client, le seuil de rentabilité tombe à 500 secondes de tournée
+par client servi, et une instance peu dense le dépasse largement.
+
+Mesuré, même instance de dix clients et un seul véhicule, en ne faisant varier
+que le coefficient : à 200 il sert 0 client sur 10, à 50 et en dessous il les
+sert tous les 10 sur une tournée de 7 006 s. Au coefficient livré, deux
+véhicules servent 10 sur 10.
+
+Le solveur répond donc correctement à son objectif ; c'est l'objectif qui est
+mal calibré pour une flotte d'un. Cela explique aussi le motif contre-intuitif
+où les grosses instances réussissent et les petites échouent : plus l'instance
+est dense, plus le coût marginal par client baisse, donc plus de clients passent
+la barre des 500 s.
+
+Ne pas toucher au coefficient sans mesurer : il est réglé autour du scénario de
+référence à trois véhicules, et le déplacer déplace tous les chiffres publiés.
+
 ## Conventions
 
 - **Aucune clé d'API** dans ce projet. OSRM et OpenStreetMap sont utilisés sans
