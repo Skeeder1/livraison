@@ -409,7 +409,13 @@ def build_tour(src: Dict[str, Any], meta: Dict[str, Any] | None = None) -> Dict[
             "roadKm": round(total_road_m / 1000, 1),
             "horizon": horizon,
             "cumulativeDriveTime": indicators["total_time_all_vehicles"],
-            "tardinessMinutes": indicators["total_tardiness_minutes"],
+            # `total_tardiness_minutes` is a misnomer inside the optimiser: it
+            # carries SECONDS, as its own comment in postprocessor admits. Every
+            # other duration in this document is in seconds too, which is how the
+            # mislabel survived unnoticed. The web contract says minutes and is
+            # consumed as minutes, so the conversion happens here, once, at the
+            # boundary. Renaming the internal indicator is a separate change.
+            "tardinessMinutes": round(indicators["total_tardiness_minutes"] / 60),
             "hubsAvailable": len(hubs),
             "hubsActivated": indicators["activated_hubs"],
             "reloads": len(reload_events),

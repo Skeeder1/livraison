@@ -9,6 +9,7 @@ millisecondes.
 Les mêmes invariants sont revérifiés sur une vraie résolution dans
 `tests/integration/test_scenario.py`, via le même assistant partagé.
 """
+from copy import deepcopy
 import pytest
 
 from optimizer.tour_format import (
@@ -78,6 +79,27 @@ class TestBuildTour:
 
         # ── ASSERT ─────────────────────────────────────────────────
         assert_tour_invariants(tour)
+
+    def test_le_retard_est_en_minutes_pas_en_secondes(self, solution_source):
+        """`tardinessMinutes` porte des minutes, malgré la source en secondes.
+
+        L'indicateur interne s'appelle `total_tardiness_minutes` et contient des
+        SECONDES, ce que son propre commentaire dans `postprocessor` reconnaît.
+        Toutes les autres durées du document étant elles aussi en secondes, le
+        mauvais nom est passé inaperçu jusqu'à ce qu'une tournée aux fenêtres
+        horaires contraignantes annonce 1292 « minutes » de retard sur une
+        journée de 165 minutes. La conversion se fait à la frontière du contrat
+        web, et ce test l'y maintient.
+        """
+        # ── ARRANGE ────────────────────────────────────────────────
+        source = deepcopy(solution_source)
+        source['results']['indicators']['total_tardiness_minutes'] = 1292
+
+        # ── ACT ────────────────────────────────────────────────────
+        tour = build_tour(source)
+
+        # ── ASSERT ─────────────────────────────────────────────────
+        assert tour['stats']['tardinessMinutes'] == 22
 
     def test_classe_chaque_arret_selon_son_role(self, solution_source):
         # ── ACT ────────────────────────────────────────────────────
