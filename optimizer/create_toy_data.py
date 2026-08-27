@@ -72,14 +72,25 @@ def _write_records(data_dir: str, filename: str, records: List[dict]) -> None:
 
 # Function to compute Euclidean distance matrix from positions
 def compute_distance_matrix(locations: List[Tuple[float, float]]) -> np.ndarray:
+    """Distances euclidiennes planes, exprimées en degrés de latitude.
+
+    L'écart de longitude est ramené à l'échelle de la latitude par un facteur
+    cos(latitude). Sans lui, la matrice traite un degré de longitude comme un
+    degré de latitude alors qu'à Paris le premier vaut ~73 km et le second
+    ~111 km : les déplacements est-ouest sont alors surévalués de moitié, et le
+    solveur les évite au profit de trajets nord-sud plus longs en vraie
+    distance. `generate_random_position` appliquait déjà cette correction pour
+    placer les points ; la métrique, elle, ne la faisait pas.
+    """
     num_points = len(locations)
     dist_matrix = np.zeros((num_points, num_points))
+    lat_scale = np.cos(np.radians(Config.DEPOT_POSITION[0]))
     for i in range(num_points):
         for j in range(num_points):
             if i != j:
-                dist_matrix[i, j] = np.sqrt(
-                    (locations[i][0] - locations[j][0]) ** 2 + (locations[i][1] - locations[j][1]) ** 2
-                )
+                d_lat = locations[i][0] - locations[j][0]
+                d_lon = (locations[i][1] - locations[j][1]) * lat_scale
+                dist_matrix[i, j] = np.sqrt(d_lat ** 2 + d_lon ** 2)
     return dist_matrix
 
 def create_toy_data(data_dir: str | None = None, verbose: bool = True) -> None:

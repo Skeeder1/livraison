@@ -31,17 +31,25 @@ REFERENCE_PARAMS = {
     'seed': 42,
 }
 
-# Relevé sur ce scénario après le retrait effectif des hubs (`strip_hubs`).
+# Relevé sur ce scénario après le retrait effectif des hubs (`strip_hubs`),
+# puis remis à jour après la correction du coût d'arc en distance (la
+# troncature `int()` ramenait à zéro les 420 arcs de la matrice, et la métrique
+# ignorait le cos(latitude) — voir `optimizer/config.py`).
+#
+# La durée cumulée monte de 21 415 s à 23 333 s parce que le temps de trajet
+# est désormais calibré à 20 km/h sur une distance réelle, contre une vitesse
+# implicite trop optimiste auparavant. Le kilométrage, lui, ne bouge presque
+# pas (150,3 → 149,2 km) : la distance était déjà minimisée indirectement, le
+# temps de trajet étant proportionnel à elle.
 #
 # Ces valeurs ne sont PAS celles de l'instantané publié dans le portfolio
 # (`delivery-tour.json` : horizon 7178, 21516 s cumulées, 140,9 km, arrêts
 # 20/17/19, 2 passages en hub). Cet instantané provient de la variante « sans
 # hubs » défectueuse, qui laissait les deux nœuds de hub dans le modèle en
-# passages obligatoires. Les livreurs les traversaient sous contrainte. Le
-# scénario corrigé sert 18 secondes plus vite et ne passe par aucun hub.
+# passages obligatoires. Les livreurs les traversaient sous contrainte.
 REFERENCE_STATS = {
-    'horizon': 7160,
-    'cumulativeDriveTime': 21415,
+    'horizon': 7791,
+    'cumulativeDriveTime': 23333,
     'reloads': 3,
     'customers': 45,
     'customersServed': 45,
@@ -50,8 +58,8 @@ REFERENCE_STATS = {
     'hubFlybys': 0,
     'tardinessMinutes': 0,
 }
-REFERENCE_STOPS_PER_VEHICLE = [17, 17, 20]
-REFERENCE_ROAD_KM = 150.3
+REFERENCE_STOPS_PER_VEHICLE = [19, 18, 17]
+REFERENCE_ROAD_KM = 149.2
 
 # Un scénario minuscule suffit pour tout ce qui ne dépend pas des valeurs de
 # référence : la forme du document et la stabilité des appels.

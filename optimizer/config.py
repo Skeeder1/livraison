@@ -26,13 +26,32 @@ class Config:
     # Les distances sont euclidiennes, exprimées en degrés (approximation plane,
     # acceptable à l'échelle d'une ville). Ce facteur les convertit en secondes.
     #
-    # Calibrage : ~85 km par degré à la latitude de Paris (111 km en latitude,
-    # 73 km en longitude), pour une vitesse moyenne de 20 km/h en circulation
-    # urbaine → 85 / 20 × 3600 ≈ 15 300 s par degré.
+    # Calibrage : la matrice étant désormais isotrope et exprimée en degrés de
+    # latitude, un degré vaut 111 km. À 20 km/h en circulation urbaine :
+    # 111 / 20 × 3600 ≈ 20 000 s par degré. L'ancienne valeur reposait sur une
+    # moyenne de 85 km/degré, qui n'a plus lieu d'être une fois la longitude
+    # ramenée à l'échelle de la latitude.
     #
     # L'ancienne valeur (600) était calée sur une zone de ±5° ; la conserver
     # avec la zone urbaine actuelle ramènerait les trajets à ~30 secondes.
-    DISTANCE_TO_TIME_FACTOR = 15000.0
+    # ── Conversion distance → mètres ─────────────────────────────────────
+    # Même approximation, exprimée en distance plutôt qu'en temps : ~85 km par
+    # degré, soit 85 000 m. Ce facteur existe parce que le coût d'arc est un
+    # entier : sans lui, `int()` reçoit des degrés, et une zone urbaine de
+    # ±0,055° tient tout entière sous 1, donc chaque distance tombe à 0 et la
+    # dimension Distance ne pèse plus rien dans l'objectif.
+    DISTANCE_TO_METERS_FACTOR = 111000.0
+
+    # Ce que coûte l'abandon d'un client, dans la même unité que le coût d'arc,
+    # c'est-à-dire en mètres. 1 000 km : environ dix fois la tournée complète de
+    # référence, donc abandonner reste toujours plus cher que le plus long des
+    # détours, sans être interdit. Ce n'est pas un détail de réglage : tant que
+    # les distances valaient 0, la pénalité pouvait valoir n'importe quoi ; dès
+    # qu'elles pèsent, une pénalité laissée à 100 000 ne vaut plus que sept arcs
+    # et le solveur se met à préférer laisser deux clients de côté.
+    DROP_CUSTOMER_PENALTY_METERS = 1_000_000
+
+    DISTANCE_TO_TIME_FACTOR = 20000.0
     SERVICE_TIME_PER_UNIT = 60  # 60 seconds per demand unit for service time
 
     # Graine du générateur aléatoire des données jouet.

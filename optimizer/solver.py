@@ -180,9 +180,16 @@ def create_evaluator_functions(data, base_node, reload_group):
     :return: Fonctions d'évaluation distance, demande et temps
     """
     def get_distance(from_node, to_node):
+        # Converti en mètres AVANT la troncature entière. Les distances sont en
+        # degrés, et sur une zone urbaine de ±0,055° elles valent toutes moins
+        # de 1 : `int()` les ramenait donc toutes à 0, si bien que la dimension
+        # Distance et son coefficient d'étendue ne pesaient rien. Le calcul du
+        # temps, lui, multipliait déjà avant d'arrondir, ce qui explique que
+        # seul le temps pilotait réellement la recherche.
         b_from = base_node[from_node]
         b_to = base_node[to_node]
-        return int(data['distance_matrix'][b_from, b_to])
+        distance = data['distance_matrix'][b_from, b_to]
+        return int(distance * Config.DISTANCE_TO_METERS_FACTOR)
 
     def get_travel_time(from_node, to_node):
         # Calcul dynamique : distance * facteur de conversion
@@ -317,7 +324,7 @@ def configure_constraints_and_penalties(routing, manager, data, capacity_dimensi
     for node in range(customer_start, customer_end):
         node_index = manager.NodeToIndex(node)
         capacity_dimension.SlackVar(node_index).SetValue(0)
-        routing.AddDisjunction([node_index], 100000)
+        routing.AddDisjunction([node_index], Config.DROP_CUSTOMER_PENALTY_METERS)
 
     # Unload depots
     for node in data['unload_depots']:
@@ -337,7 +344,7 @@ def configure_constraints_and_penalties(routing, manager, data, capacity_dimensi
     # Dummy nodes
     for node in data['dummy_nodes']:
         node_index = manager.NodeToIndex(node)
-        routing.AddDisjunction([node_index], 100000)
+        routing.AddDisjunction([node_index], Config.DROP_CUSTOMER_PENALTY_METERS)
 
 
 def setup_time_constraints(routing, manager, data, time_dimension, num_real_vehicles):
