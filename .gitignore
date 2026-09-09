@@ -192,7 +192,10 @@ Thumbs.db
 *.temp
 
 # PDF files (documentation)
-*.pdf.claude/
+*.pdf
+
+# Worktrees et réglages locaux des agents.
+.claude/
 
 # uv : le verrou est suivi, il fait partie de la reproductibilité.
 !uv.lock
