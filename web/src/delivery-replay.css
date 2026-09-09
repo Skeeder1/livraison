@@ -1,0 +1,875 @@
+/*
+ * Styles of the delivery replay, lifted verbatim from the portfolio's
+ * `src/styles/global.css` (its two `.dr-*` sections) so this package renders
+ * the exact same UI without depending on the site.
+ *
+ * The only addition is the token block below: on the site these values come
+ * from the global `:root`, and here they are pinned to `.dr-root` so the
+ * component carries its own theme and inherits nothing from the host page.
+ * Values are copied from the site's dark theme, unchanged.
+ */
+
+.dr-root {
+  --font-family-sans: 'Inter', system-ui, sans-serif;
+  --font-family-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --bg:             #101010;
+  --bg-subtle:      #111111;
+  --bg-card:        #141414;
+  --border:         #404040;
+  --border-card:    #303030;
+  --text-primary:   #ffffff;
+  --text-secondary: #a0a0a0;
+  --text-muted:     #828282;
+  --accent:         #72ffff;
+  --accent-text:    #72ffff;
+  --accent-hover:   #55eeff;
+
+  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.5), 0 4px 24px rgba(0, 0, 0, 0.4);
+
+  --radius-sm:   0.375rem;
+  --radius-md:   0.625rem;
+  --radius-lg:   0.875rem;
+  --radius-card: var(--radius-lg);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 160ms;
+  --dur-mid:  260ms;
+
+  --tap-min: 44px;
+
+  color-scheme: dark;
+  color: var(--text-secondary);
+  font-family: var(--font-family-sans);
+}
+
+/* ─── Delivery replay demo (/demos/delivery) ───────────────────────── */
+.dr-root {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  outline: none;
+}
+.dr-root:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: 1rem; }
+
+@media (min-width: 1080px) {
+  .dr-root { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; }
+  .dr-provenance { grid-column: 1 / -1; }
+}
+
+.dr-main { min-width: 0; display: flex; flex-direction: column; gap: 0.75rem; }
+
+.dr-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 11;
+  min-height: 320px;
+  max-height: 68vh;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  /* Leaflet stacks its panes from z-index 200 to 1000 inside the map container,
+     and that container is not a stacking context, so those layers compete with
+     everything else on the stage. Isolating here keeps the whole ladder below
+     private to the stage instead of leaking into the page. */
+  isolation: isolate;
+}
+@media (min-width: 768px) { .dr-stage { aspect-ratio: 16 / 9; } }
+
+/* Leaflet's container fills the stage; the overlay sits over its panes (200 to
+   700) but under its controls (1000), so the zoom buttons and the scale bar are
+   never painted over by a route, and the HUD clears both. */
+.dr-map { position: absolute; inset: 0; background: transparent; }
+.dr-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 0;
+  /* Every gesture belongs to the map underneath. The hover tooltip reads the
+     pointer events that bubble up to the stage instead. */
+  pointer-events: none;
+}
+/* Leaflet marks the map pane while an animated zoom is in flight. The overlay
+   stops redrawing for those 250 ms and rides the same curve instead, so the
+   routes and the city arrive together. Pinch never gets here: it moves the map
+   frame by frame, which the ordinary redraw already follows exactly. */
+.dr-stage:has(.leaflet-zoom-anim) .dr-canvas {
+  transition: transform 0.25s cubic-bezier(0, 0, 0.25, 1);
+}
+
+/* ── HUD ── */
+/* Above Leaflet's control layer (1000): the HUD is the page's furniture, not the
+   map's, and it must never end up under a zoom button. */
+.dr-hud {
+  position: absolute;
+  z-index: 1002;
+  top: 0.75rem;
+  left: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.dr-hud-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--bg-card) 82%, transparent);
+  border: 1px solid var(--border-card);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.dr-hud-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.dr-hud-value {
+  font-family: var(--font-family-mono);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.dr-hud-total { color: var(--text-muted); font-size: 0.8rem; font-weight: 400; }
+
+/* ── Legend ── */
+.dr-legend {
+  position: absolute;
+  z-index: 1002;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.7rem;
+  max-width: calc(100% - 8rem);
+  pointer-events: none;
+}
+.dr-lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  font-family: var(--font-family-mono);
+}
+.dr-sw { width: 9px; height: 9px; flex-shrink: 0; display: inline-block; }
+.dr-sw--depot { background: var(--accent); }
+.dr-sw--hub {
+  border: 1.5px dashed var(--text-secondary);
+  transform: rotate(45deg);
+  background: transparent;
+}
+.dr-sw--pending { border: 1.5px solid var(--text-muted); border-radius: 50%; background: transparent; }
+.dr-sw--done { background: var(--text-secondary); border-radius: 50%; }
+
+/* ── Tooltip ── */
+.dr-tip {
+  position: absolute;
+  z-index: 1004;
+  pointer-events: none;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.45rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  font-size: 0.7rem;
+  font-family: var(--font-family-mono);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.dr-tip-head { color: var(--text-primary); font-weight: 600; }
+
+/* ── Controls ── */
+.dr-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.dr-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: var(--font-family-sans);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.18s, color 0.18s, background 0.18s;
+}
+.dr-btn:hover { border-color: var(--accent); color: var(--accent); }
+.dr-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+  font-weight: 600;
+  min-width: 6.2rem;
+}
+.dr-btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #000; }
+
+/* The timeline and the parameter sliders are the same control. */
+.dr-scrub,
+.dr-range {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0 var(--dr-progress, 0%),
+    var(--bg-subtle) var(--dr-progress, 0%) 100%
+  );
+  border: 1px solid var(--border-card);
+  cursor: pointer;
+}
+.dr-scrub { flex: 1 1 180px; min-width: 140px; }
+.dr-range { width: 100%; }
+.dr-scrub::-webkit-slider-thumb,
+.dr-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-card);
+  cursor: grab;
+}
+.dr-scrub::-moz-range-thumb,
+.dr-range::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-card);
+  cursor: grab;
+}
+.dr-scrub:focus-visible,
+.dr-range:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.dr-range:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Segmented groups: playback speed, and every choice in the solve panel. */
+.dr-speeds,
+.dr-seg {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-subtle);
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-card);
+}
+.dr-speed,
+.dr-segbtn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  padding: 0.28rem 0.45rem;
+  border-radius: 0.35rem;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+.dr-speed:hover,
+.dr-segbtn:hover:not(:disabled) { color: var(--text-primary); }
+.dr-speed.is-active,
+.dr-segbtn.is-active { background: var(--accent); color: #000; font-weight: 600; }
+.dr-segbtn { flex: 1 1 0; min-width: 0; text-align: center; }
+.dr-segbtn:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.dr-note {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+}
+
+/* ── Side panel ── */
+.dr-side { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+
+.dr-side-title {
+  margin: 0 0 0.6rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-weight: 500;
+}
+
+.dr-couriers { display: flex; flex-direction: column; gap: 0.5rem; }
+.dr-courier {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.7rem 0.8rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 0.6rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.18s, transform 0.18s;
+}
+.dr-courier:hover { border-color: var(--accent); }
+.dr-courier.is-focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.dr-courier-top { display: flex; align-items: center; gap: 0.45rem; }
+.dr-chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-family-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #000;
+  flex-shrink: 0;
+}
+.dr-courier-name { font-size: 0.82rem; color: var(--text-primary); font-weight: 500; }
+.dr-phase {
+  margin-left: auto;
+  font-family: var(--font-family-mono);
+  font-size: 0.62rem;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+/* The badge text is 9.9px, so it needs the full 4.5:1. The light theme accent
+   (#009999) only reaches 3.49:1 on white, hence a dedicated darker token; the
+   border keeps the accent, since a 3:1 border already passes as a UI component. */
+.dr-phase--driving { color: var(--accent-text); border-color: var(--accent); }
+.dr-phase--serving { color: #fbbf24; border-color: #fbbf24; }
+.dr-phase--waiting { color: var(--text-secondary); }
+.dr-phase--done { color: var(--text-muted); }
+
+.dr-gauge {
+  display: block;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+.dr-gauge-fill { display: block; height: 100%; border-radius: 999px; transition: width 0.15s linear; }
+
+.dr-courier-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.66rem;
+  color: var(--text-muted);
+}
+.dr-courier-meta b { color: var(--text-primary); font-weight: 600; }
+
+.dr-stats,
+.dr-feed {
+  padding: 0.8rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 0.6rem;
+}
+.dr-stats dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 0.75rem; }
+.dr-stats dl > div { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.dr-stat-wide { grid-column: 1 / -1; }
+.dr-stats dt {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.dr-stats dd {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.dr-stat-wide dd { font-size: 0.72rem; color: var(--text-secondary); line-height: 1.45; }
+
+.dr-feed ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 190px;
+  overflow-y: auto;
+}
+.dr-feed li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.dr-feed-time {
+  font-family: var(--font-family-mono);
+  font-size: 0.64rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.dr-feed-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+.dr-provenance {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  line-height: 1.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dr-gauge-fill { transition: none; }
+}
+/* ─── Delivery demo: generate your own tour ─────────────────────────
+   Appended before the reduced-motion block on purpose, see the note at
+   the bottom of this file. */
+
+/* Headline numbers. They moved out of the Astro page and into the island
+   because they describe the tour on screen, which can be replaced. */
+.dr-headline {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem 2rem;
+}
+.dr-headline-item { display: flex; flex-direction: column; gap: 0.2rem; }
+.dr-headline-value {
+  font-family: var(--font-family-mono);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.dr-headline-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The exchange: the outgoing round dips, the incoming one comes up. The canvas
+   is never cleared and never unmounted, and the map dips with it so the city
+   does not stay at full strength under a round that is on its way out. */
+.dr-canvas,
+.dr-map,
+.dr-stage .dr-hud,
+.dr-stage .dr-legend {
+  transition: opacity var(--dur-mid) var(--ease-out);
+}
+.dr-stage.is-swapping .dr-canvas,
+.dr-stage.is-swapping .dr-map,
+.dr-stage.is-swapping .dr-hud,
+.dr-stage.is-swapping .dr-legend { opacity: 0.25; }
+
+/* ── Banner over the stage ── */
+/* Bottom right, clear of the scale bar the canvas draws there. Not the top:
+   the visitor presses Generate from the panel under the map, and by then the
+   site's floating header is often sitting over the top of the stage. */
+.dr-banner {
+  position: absolute;
+  bottom: 2.6rem;
+  right: 0.75rem;
+  z-index: 1003;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  max-width: min(20rem, calc(100% - 1.5rem));
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+  border: 1px solid var(--border-card);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-card);
+}
+/* The legend wraps to two lines on a narrow stage, so the banner clears more.
+   So does the legend itself: wrapped, its rows reach far enough across a 390px
+   stage to sit on top of the credit in the opposite corner, and the credit is
+   the one thing here that is not allowed to be obscured. The bottom strip of a
+   narrow stage belongs to the credit; the legend starts above it. */
+@media (max-width: 640px) {
+  .dr-banner { bottom: 3.9rem; }
+  .dr-legend { bottom: 2rem; }
+}
+.dr-banner--ready { border-color: var(--accent); }
+.dr-banner-icon { color: var(--accent); display: flex; padding-top: 0.1rem; }
+.dr-banner-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.dr-banner-text b {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.dr-banner-text span {
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.dr-banner-text .dr-banner-meta {
+  font-family: var(--font-family-mono);
+  font-size: 0.64rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.dr-banner-cancel {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: -0.15rem -0.2rem 0 0;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.dr-banner-cancel:hover { color: var(--text-primary); background: var(--bg-subtle); }
+
+.dr-spinner { animation: dr-spin 900ms linear infinite; }
+@keyframes dr-spin { to { transform: rotate(360deg); } }
+
+/* ── Solve panel ── */
+.dr-solve {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 0.35rem;
+  padding: 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+}
+.dr-solve-head .dr-side-title { margin-bottom: 0.3rem; }
+.dr-solve-lede {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+.dr-solve-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 0.9rem 1.25rem;
+}
+.dr-field { display: flex; flex-direction: column; gap: 0.45rem; min-width: 0; }
+.dr-field-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.dr-field-value {
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.dr-disclosure {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.1rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dr-disclosure:hover { color: var(--accent); }
+.dr-disclosure svg { transition: transform var(--dur-fast) var(--ease-out); }
+.dr-disclosure.is-open svg { transform: rotate(180deg); }
+
+.dr-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.dr-solve-note {
+  margin: 0;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  line-height: 1.5;
+}
+.dr-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.dr-btn:disabled:hover { border-color: var(--border); color: var(--text-secondary); }
+.dr-btn--primary:disabled:hover { background: var(--accent); border-color: var(--accent); color: #000; }
+
+/* Reserving the row keeps the panel from jumping when an error appears. */
+.dr-alert-slot { min-height: 1.25rem; }
+.dr-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.dr-alert svg { flex-shrink: 0; margin-top: 0.15rem; color: var(--dr-warn); }
+
+/* ── Delta card ── */
+/* Dark is the default here, same convention as the palette at the top. */
+:root { --dr-good: #4ade80; --dr-bad: #fbbf24; --dr-warn: #fbbf24; }
+
+.dr-delta dd { display: flex; align-items: baseline; gap: 0.35rem; flex-wrap: wrap; }
+.dr-d {
+  font-size: 0.64rem;
+  font-family: var(--font-family-mono);
+  padding: 0.05rem 0.3rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.dr-d--good { color: var(--dr-good); }
+.dr-d--bad  { color: var(--dr-bad); }
+.dr-d--flat { color: var(--text-muted); }
+.dr-delta-ref {
+  margin: 0.7rem 0 0;
+  font-size: 0.64rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+}
+
+/* ── The optional city map ── */
+/* The toggle sits with the playback controls and borrows their segmented look;
+   only the label in front of it is new. */
+.dr-mapctl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.dr-ctl-label {
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  white-space: nowrap;
+}
+/* The map button is square: an icon, no caption, pressed or not. Its accessible
+   name carries the label the eye does not need. */
+.dr-mapbtn {
+  padding: 0;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.dr-mapbtn.is-active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* The legend reads straight off the flat surface, but not off a street map: the
+   HUD already carries a card behind it, so each legend item takes the same one
+   once there is a city underneath. */
+.dr-stage.has-basemap .dr-lg {
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--bg-card) 78%, transparent);
+}
+
+/* Coarse pointers get real targets. Segmented buttons take the full tap height;
+   their width flexes because six of them share one row down to 360px, where the
+   page gutter leaves each one just under the same figure. They shrink rather
+   than overflow, which is the trade that keeps the layout intact. */
+
+/* ── Leaflet, dressed for this page ────────────────────────────────────────── */
+/* The library ships a white, rounded, drop-shadowed chrome that belongs to a
+   different site. Everything below re-skins it with the page's own tokens; the
+   geometry Leaflet needs (positioning, the panes, the tile grid) is left alone. */
+
+/* The tiles are the substrate; the couriers are the subject. Dark theme inverts
+   the sheet so OSM's *dark* ink (road casings, buildings, water edges, labels)
+   becomes the light that carries the city's shape against a dark ground, then
+   lifts it back out of the shadows the inversion pushed it into. Light theme
+   only needs the colour taken out of it.
+
+   Applied to the pane rather than to each tile: one filtered layer instead of
+   one per image, and it survives every zoom without a repaint of ours. */
+.dr-map .leaflet-tile-pane {
+  opacity: 0.42;
+  filter: grayscale(1) invert(1) brightness(1.75) contrast(0.78);
+}
+
+.dr-map .leaflet-control-zoom {
+  border: none;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dr-map .leaflet-control-zoom a {
+  width: 26px;
+  height: 26px;
+  line-height: 24px;
+  border: 1px solid var(--border-card);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--bg-card) 82%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: 1rem;
+  font-weight: 600;
+  transition: color 0.18s, border-color 0.18s;
+}
+.dr-map .leaflet-control-zoom a:hover {
+  background: color-mix(in srgb, var(--bg-card) 92%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.dr-map .leaflet-control-zoom a.leaflet-disabled {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+.dr-map .leaflet-control-zoom a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The bottom right corner carries two things, and they must not fight over it:
+   the scale bar sits above the credit, both hard against the corner. Flex
+   because Leaflet floats its controls, and two floated blocks in a corner that
+   has no width of its own land wherever they land.
+
+   The inset lives on the corner and the controls are stripped of their own
+   margins, so the two line up on one edge whatever Leaflet's per-control
+   defaults say. Leaflet prepends bottom controls, so the scale (added last)
+   comes first in the DOM and lands on top, the credit under it. */
+.dr-map.leaflet-container .leaflet-bottom.leaflet-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  padding: 0 1.1rem 0.6rem 0;
+}
+.dr-map.leaflet-container .leaflet-bottom.leaflet-right .leaflet-control { margin: 0; }
+
+/* Credit for the tiles, and a licence condition rather than a caption: it is up
+   for exactly as long as the layer is, because the layer is what carries it.
+   Quiet, though. It is muted text at the size of the legend, with no card and no
+   link colour, so it reads as part of the map rather than as a control. */
+/* `.dr-map.leaflet-container` rather than `.dr-map`: Leaflet's own white pill is
+   set by `.leaflet-container .leaflet-control-attribution`, which ties a
+   two-class selector and wins on source order. Three classes settles it. */
+.dr-map.leaflet-container .leaflet-control-attribution {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  font-family: var(--font-family-mono);
+  font-size: 0.62rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  text-shadow: none;
+}
+.dr-map .leaflet-control-attribution a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.18s;
+}
+.dr-map .leaflet-control-attribution a:hover { color: var(--accent); }
+.dr-map .leaflet-control-attribution a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 0.2rem;
+}
+/* With the layer off, Leaflet empties the control rather than removing it, and
+   an empty box still takes its margin in the corner. */
+.dr-map .leaflet-control-attribution:empty { display: none; }
+
+/* Same bar the canvas used to draw bottom right, now told what it measures by
+   Leaflet instead of by a constant. */
+.dr-map .leaflet-control-scale-line {
+  border: 1px solid color-mix(in srgb, var(--text-secondary) 60%, transparent);
+  border-top: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 4px 2px;
+  color: var(--text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: 0.64rem;
+  line-height: 1.1;
+  text-align: center;
+  text-shadow: none;
+  box-shadow: none;
+}
+
+/* Leaflet's grab cursors read as "this thing moves", which is exactly the point
+   now that it does. */
+.dr-map.leaflet-container { font-family: inherit; background: transparent; outline: none; }
+@media (pointer: coarse) {
+  .dr-btn,
+  .dr-disclosure,
+  .dr-banner-cancel,
+  .dr-speed,
+  .dr-segbtn { min-height: var(--tap-min); }
+  .dr-btn,
+  .dr-banner-cancel { min-width: var(--tap-min); }
+  .dr-speeds,
+  .dr-seg { padding: 4px; }
+  .dr-courier { padding: 0.85rem 0.8rem; }
+
+  /* A 6px track is a 6px target. The transparent block borders grow the hit
+     area to a full thumb without thickening the line: the gradient is clipped
+     to the padding box, so the slider looks exactly as it does on a mouse. */
+  .dr-scrub,
+  .dr-range {
+    height: var(--tap-min);
+    border-block: 18px solid transparent;
+    background-clip: padding-box;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* A ring that does not turn still reads as busy next to a counter that does. */
+  .dr-spinner { animation: none; }
+  .dr-canvas,
+  .dr-map,
+  .dr-stage .dr-hud,
+  .dr-stage .dr-legend { transition: none; }
+}

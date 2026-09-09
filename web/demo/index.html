@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rejeu de tournée — VRP</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; background: #101010; }
+      body {
+        color: #a0a0a0;
+        font-family: 'Inter', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #app { max-width: 1400px; margin: 0 auto; padding: clamp(1.25rem, 4vw, 2.5rem); }
+      .demo-head { margin: 0 0 1.5rem; }
+      .demo-head h1 {
+        margin: 0 0 0.4rem;
+        color: #fff;
+        font-size: clamp(1.4rem, 3vw, 2rem);
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .demo-head p { margin: 0; font-size: 0.9rem; line-height: 1.6; max-width: 60ch; }
+      .demo-locale { display: flex; gap: 0.4rem; margin-top: 1rem; }
+      .demo-locale button {
+        padding: 0.35rem 0.8rem;
+        border: 1px solid #303030;
+        border-radius: 9999px;
+        background: #141414;
+        color: #a0a0a0;
+        font: inherit;
+        font-size: 0.8rem;
+        cursor: pointer;
+      }
+      .demo-locale button[aria-pressed='true'] { border-color: #72ffff; color: #72ffff; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>
