@@ -10,6 +10,7 @@ Les mêmes invariants sont revérifiés sur une vraie résolution dans
 `tests/integration/test_scenario.py`, via le même assistant partagé.
 """
 from copy import deepcopy
+
 import pytest
 
 from optimizer.tour_format import (

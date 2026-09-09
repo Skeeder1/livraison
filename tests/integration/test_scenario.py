@@ -11,9 +11,9 @@ de ces valeurs signale que la démonstration ne rejoue plus le même problème.
 import pytest
 
 from optimizer.scenario import (
-    NoSolutionError,
     SCENARIO_DEFAULTS,
     SCENARIO_LIMITS,
+    NoSolutionError,
     ScenarioParamsError,
     solve_scenario,
 )

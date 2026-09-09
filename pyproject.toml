@@ -31,6 +31,7 @@ experiments = [
 ]
 dev = [
     "pytest>=8.0",
+    "ruff>=0.6",
 ]
 
 [project.scripts]
@@ -57,3 +58,22 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["optimizer"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+# E/F : erreurs et fautes de base. I : ordre des imports. UP : tournures
+# modernisables. B : pièges usuels (bugbear). C4 : compréhensions.
+select = ["E", "F", "I", "UP", "B", "C4"]
+ignore = [
+    # Les messages d'assertion des tests portent souvent des f-strings longues,
+    # et les docstrings du solveur citent des formules qu'on ne coupe pas.
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Les tests construisent des dictionnaires de données à la main : les boucles
+# d'assertion y sont volontairement explicites.
+"tests/**" = ["B011"]

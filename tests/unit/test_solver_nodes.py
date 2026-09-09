@@ -83,7 +83,7 @@ class TestCreateBaseNodeMapping:
         base_node = create_base_node_mapping(data, hub_indices)
 
         # ── ASSERT ─────────────────────────────────────────────────
-        for hub, deposit, pickup in zip(hub_indices, data['hub_deposits'], data['hub_pickups']):
+        for hub, deposit, pickup in zip(hub_indices, data['hub_deposits'], data['hub_pickups'], strict=False):
             assert base_node[deposit] == hub, (
                 f"le dépôt {deposit} du hub {hub} pointe vers {base_node[deposit]}"
             )

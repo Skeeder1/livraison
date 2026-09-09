@@ -16,7 +16,6 @@ import pytest
 
 from optimizer import road_routing
 
-
 WAYPOINTS = [(48.8566, 2.3522), (48.8584, 2.2945), (48.8606, 2.3376)]
 
 # Réponse OSRM minimale : deux segments de deux points chacun.

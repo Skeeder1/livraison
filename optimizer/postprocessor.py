@@ -1,7 +1,11 @@
 # optimizer/postprocessor.py
+from typing import Any
+
 from ortools.constraint_solver import pywrapcp
-from typing import Dict, Any
+
 from optimizer.config import Config
+
+
 # Codes couleurs ANSI
 class Colors:
     RESET = '\033[0m'
@@ -90,7 +94,7 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
     
     # Affichage détaillé des résultats par véhicule
     print(f"\n{Colors.BOLD}{Colors.CYAN}{'='*80}")
-    print(f"                    RÉSULTATS DÉTAILLÉS PAR VÉHICULE")
+    print("                    RÉSULTATS DÉTAILLÉS PAR VÉHICULE")
     print(f"{'='*80}{Colors.RESET}")
     
     for v in range(data['num_vehicles']):
@@ -113,12 +117,12 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
         
         # Détail étape par étape
         print(f"\n   {Colors.BOLD}{Colors.BLUE}📍 DÉTAIL DE LA TOURNÉE:{Colors.RESET}")
-        for i, (node, time, load, remain) in enumerate(zip(route, times, loads, remaining)):
+        for i, (node, time, load, _remain) in enumerate(zip(route, times, loads, remaining, strict=False)):
             if node == 0:
                 node_type = f"{Colors.RED}🏠 DÉPÔT{Colors.RESET}"
             elif 1 <= node <= data['num_customers']:
                 node_type = f"{Colors.GREEN}👤 Client {node}{Colors.RESET}"
-                demand = data['demands'][node]
+                data['demands'][node]
                 tw_start, tw_end = data['time_windows'][node]
                 print(f"      {Colors.WHITE}Étape {i+1:2d}:{Colors.RESET} {node_type:<25} | {Colors.YELLOW}Arrivée: {format_time(time):<8}{Colors.RESET} | {Colors.CYAN}Charge: {load:>2}/{vehicle_capacity}{Colors.RESET} | {Colors.MAGENTA}Node: {node}{Colors.RESET}")
                 continue
@@ -141,7 +145,7 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
         print(f"      {Colors.CYAN}Charge finale         :{Colors.RESET} {Colors.BLUE}{loads[-1] if loads else 0}{Colors.RESET}")
         
     print(f"\n{Colors.BOLD}{Colors.CYAN}{'='*80}")
-    print(f"                       INFORMATIONS GÉNÉRALES")
+    print("                       INFORMATIONS GÉNÉRALES")
     print(f"{'='*80}{Colors.RESET}")
 
     # Affichage des informations générales
@@ -186,7 +190,7 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
     print(f"\n{Colors.BOLD}{Colors.CYAN}{'='*80}{Colors.RESET}")
 
 
-def get_activated_hubs(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, routing: pywrapcp.RoutingModel, solution: pywrapcp.Assignment) -> set:
+def get_activated_hubs(data: dict[str, Any], manager: pywrapcp.RoutingIndexManager, routing: pywrapcp.RoutingModel, solution: pywrapcp.Assignment) -> set:
     """
     Détecte les hubs activés (utilisés) dans la solution.
     
@@ -276,7 +280,7 @@ def get_total_distance(manager, routing, solution, data):
             
     return total_distance
 
-def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, routing: pywrapcp.RoutingModel, solution: pywrapcp.Assignment, verbose: bool = True) -> Dict[str, Any]:
+def get_results(data: dict[str, Any], manager: pywrapcp.RoutingIndexManager, routing: pywrapcp.RoutingModel, solution: pywrapcp.Assignment, verbose: bool = True) -> dict[str, Any]:
     """
     Extracts results from solution.
 
@@ -303,16 +307,16 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
     current_loads = []  # Initialize current_loads list
 
     # Dictionnaire structuré des indices pour une organisation claire
-    clean_data = {
+    {
         'vehicles': {
-            'real': [i for i in range(Config.NUM_VEHICLES)],
-            'dummy': [i for i in range(Config.NUM_VEHICLES, Config.NUM_VEHICLES + Config.NUM_HUBS)]
+            'real': list(range(Config.NUM_VEHICLES)),
+            'dummy': list(range(Config.NUM_VEHICLES, Config.NUM_VEHICLES + Config.NUM_HUBS))
         },
         'nodes': {
             'depot': 0,
-            'customers': [i for i in range(1, Config.NUM_CUSTOMERS + 1)],
-            'unload_depots': [i for i in range(Config.NUM_CUSTOMERS + 1, Config.NUM_CUSTOMERS + Config.NUM_UNLOAD_DEPOTS + 1)],
-            'hubs': [i for i in range(Config.NUM_CUSTOMERS + Config.NUM_UNLOAD_DEPOTS + 1, Config.NUM_CUSTOMERS + Config.NUM_UNLOAD_DEPOTS + Config.NUM_HUBS + 1)]
+            'customers': list(range(1, Config.NUM_CUSTOMERS + 1)),
+            'unload_depots': list(range(Config.NUM_CUSTOMERS + 1, Config.NUM_CUSTOMERS + Config.NUM_UNLOAD_DEPOTS + 1)),
+            'hubs': list(range(Config.NUM_CUSTOMERS + Config.NUM_UNLOAD_DEPOTS + 1, Config.NUM_CUSTOMERS + Config.NUM_UNLOAD_DEPOTS + Config.NUM_HUBS + 1))
         }
     }
 
@@ -382,7 +386,7 @@ def get_results(data: Dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
         # Calculer la capacité restante à chaque étape
         # Capacité restante = Capacité totale du véhicule - Charge cumulée transportée
         cap = data['vehicle_capacities'][v] if v < len(data['vehicle_capacities']) else 0  # Véhicule factice
-        remaining_charges.append([cap - l for l in loads])
+        remaining_charges.append([cap - charge for charge in loads])
         current_loads.append(loads)  # Store current loads for each vehicle
 
         # Sauvegarder les données du véhicule

@@ -9,8 +9,9 @@ des modifications et le texte de la licence d'origine.
 """
 # optimizer/solver.py
 from functools import partial
-from ortools.constraint_solver import pywrapcp
-from ortools.constraint_solver import routing_enums_pb2
+
+from ortools.constraint_solver import pywrapcp, routing_enums_pb2
+
 from optimizer.config import Config
 
 
@@ -144,7 +145,7 @@ def create_base_node_mapping(data, hub_indices):
     """
     base_node = list(range(data['num_nodes']))
 
-    for u in data['unload_depots']:
+    for _u in data['unload_depots']:
         base_node.append(data['depot'])
 
     # Dépôt et retrait d'un même hub sont **consécutifs** en numérotation :
@@ -155,7 +156,7 @@ def create_base_node_mapping(data, hub_indices):
     # du hub 1 pointait vers le hub 2, et le dépôt du hub 2 vers le hub 1. Les
     # distances et les temps de transfert étaient alors calculés depuis la
     # mauvaise position. Sans effet à un seul hub, d'où la discrétion du défaut.
-    for deposit, pickup, hub in zip(data['hub_deposits'], data['hub_pickups'], hub_indices):
+    for _deposit, _pickup, hub in zip(data['hub_deposits'], data['hub_pickups'], hub_indices, strict=False):
         base_node.append(hub)  # dépôt
         base_node.append(hub)  # retrait
 
@@ -564,8 +565,11 @@ def solve_vrp(data):
     # Les coefficients SPAN forcent l'équilibrage sans changer l'objectif principal
     routing.SetArcCostEvaluatorOfAllVehicles(distance_evaluator_index)
 
-    # Add fixed cost per vehicle to incentivize balanced usage
-    routing.SetFixedCostOfAllVehicles(50)  # OPTIMAL: Light incentive for vehicle balance
+    # Coût fixe par véhicule : décourage l'ouverture d'une tournée pour une
+    # poignée de clients. La valeur était écrite en dur ici, donc invisible du
+    # harnais de calibration, qui refuse à juste titre de balayer un bouton que
+    # le solveur n'irait pas lire.
+    routing.SetFixedCostOfAllVehicles(Config.VEHICLE_FIXED_COST_METERS)
 
     # 9. Configurer les paramètres de recherche
     search_parameters = configure_search_parameters(data)

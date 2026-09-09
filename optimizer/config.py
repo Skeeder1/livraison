@@ -56,6 +56,12 @@ class Config:
     # Valeur à calibrer expérimentalement, cf. `experiments/`.
     TRANSFER_PENALTY_METERS = 0
 
+    # Coût fixe d'utilisation d'un véhicule, en mètres (même unité que le coût
+    # d'arc). Il incite à ne pas ouvrir une tournée pour trois clients : sans
+    # lui, répartir sur tous les véhicules est toujours gratuit. Valeur héritée
+    # d'un réglage manuel, à calibrer, cf. `experiments/`.
+    VEHICLE_FIXED_COST_METERS = 50
+
     DISTANCE_TO_TIME_FACTOR = 20000.0
     SERVICE_TIME_PER_UNIT = 60  # 60 seconds per demand unit for service time
 
