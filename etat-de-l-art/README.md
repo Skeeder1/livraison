@@ -44,9 +44,29 @@ dimensions portant un coût d'étalement. Le terme se réduit donc à
 `coefficient × max(fin)` : c'est le **min-max recommandé**, et le modèle est conforme.
 
 Mais il l'est **par accident de configuration** — tous les véhicules reçoivent la même
-heure de départ. Échelonner les départs suffirait à retransformer ce terme en étendue,
-sans que rien ne le signale. L'invariant est écrit dans `optimizer/solver.py`, là où il
-peut se casser, avec la parade : une borne souple par véhicule, qui reste monotone.
+heure de départ. L'invariant se casse de deux façons distinctes, qu'il ne faut pas
+confondre :
+
+| régime des départs | `min(départ)` | ce que devient le terme |
+|---|---|---|
+| épinglés, tous égaux *(aujourd'hui)* | constante nulle | **min-max sur la durée** — sans danger |
+| épinglés mais **échelonnés** | encore une constante | min-max sur l'heure **absolue** de fin — anti-équilibrage silencieux |
+| **non épinglés** (fenêtres souples) | variable de décision | **véritable étendue** — manipulable |
+
+Le deuxième cas est le plus traître : le terme reste formellement un min-max, mais un
+véhicule qui part à 10 h traîne quatre heures de handicap avant qu'on lui affecte le
+moindre client. Le solveur surcharge alors celui qui part tôt et laisse l'autre à quai.
+
+Le troisième est celui que décrit Matl et al. : le solveur améliore le terme en
+**retardant le véhicule qui part le plus tôt**, sans qu'aucune tournée ne raccourcisse
+ni qu'aucun client ne bouge. C'est leur « incohérence », une violation de monotonie.
+
+Le mou, en revanche, n'est pas manipulable : `cumul(j) = cumul(i) + transit + slack(i)`
+fait qu'attendre gonfle sa propre fin. Attendre sur le véhicule critique ne peut
+qu'aggraver le terme — le min-max **décourage** l'attente au lieu de l'encourager.
+
+L'invariant et sa parade — une borne souple par véhicule, monotone et indifférente à
+l'heure de départ — sont écrits dans `optimizer/solver.py`, là où ils peuvent se casser.
 
 ---
 

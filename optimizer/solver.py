@@ -322,19 +322,37 @@ def add_routing_dimensions(routing, manager, data, vehicle_capacities, vehicle_m
     # sur le scénario de référence, les cumuls de départ valent [0, 0, 0] sur les
     # trois dimensions portant un coût d'étalement.
     #
-    # L'invariant est fragile et mérite d'être écrit : **échelonner les heures de
-    # départ transformerait silencieusement ce terme en mesure d'étendue.** Or
-    # Matl, Hartl & Vidal (Workload Equity in Vehicle Routing Problems,
-    # Transportation Science, 2018) montrent que sur une métrique à somme
-    # variable comme la durée, les mesures non monotones — l'étendue en est une —
-    # produisent des tournées qui ne sont même pas optimales au sens du TSP :
-    # moins de 20 % des solutions Pareto-optimales le sont dans leur étude. Le
-    # min-max, lui, fait partie des mesures qu'ils recommandent.
+    # L'invariant est fragile, et il se casse de deux façons différentes qu'il
+    # vaut mieux ne pas confondre :
     #
-    # Autrement dit, le modèle applique aujourd'hui la bonne mesure par accident
-    # de configuration. Si les départs devaient différer, il faudrait remplacer ce
-    # terme par une borne souple sur la fin de chaque véhicule
-    # (`SetCumulVarSoftUpperBound`), qui reste monotone.
+    #   départs épinglés, tous égaux (aujourd'hui)
+    #       min(départ) est une constante nulle -> min-max sur la DURÉE des
+    #       tournées. C'est la mesure monotone recommandée par Matl, Hartl &
+    #       Vidal (Transportation Science, 2018). Sans danger.
+    #
+    #   départs épinglés mais ÉCHELONNÉS
+    #       min(départ) reste une constante : le terme demeure un min-max, mais
+    #       porte désormais sur l'heure ABSOLUE de fin. Un véhicule qui part à
+    #       10 h traîne quatre heures de handicap avant même qu'on lui affecte un
+    #       client : le terme surcharge alors systématiquement celui qui part tôt
+    #       et laisse l'autre à quai. Anti-équilibrage silencieux.
+    #
+    #   départs NON épinglés (fenêtres de service souples)
+    #       min(départ) devient une variable de décision, et le terme une
+    #       véritable ÉTENDUE. Le solveur peut alors l'améliorer en retardant le
+    #       véhicule qui part le plus tôt : l'objectif baisse sans qu'aucune
+    #       tournée ne raccourcisse ni qu'aucun client ne bouge. C'est
+    #       l'incohérence décrite par Matl et al., une violation de monotonie —
+    #       et dans leur étude, moins de 20 % des solutions Pareto-optimales
+    #       obtenues avec de telles mesures sont même optimales au sens du TSP.
+    #
+    # Le mou, lui, n'est pas manipulable ici : `cumul(j) = cumul(i) + transit +
+    # slack(i)` fait qu'attendre gonfle sa propre fin. Attendre sur le véhicule
+    # critique ne peut qu'aggraver le terme, jamais l'améliorer.
+    #
+    # Parade dans les deux cas de rupture : remplacer ce terme par une borne
+    # souple sur la fin de chaque véhicule (`SetCumulVarSoftUpperBound`), qui
+    # reste monotone et se moque de l'heure de départ.
     time_dimension.SetGlobalSpanCostCoefficient(Config.TIME_SPAN_COEFFICIENT)
 
     return (distance_dimension, capacity_dimension, time_dimension,
