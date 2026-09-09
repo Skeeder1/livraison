@@ -7,21 +7,36 @@ ce fichier retient ce qui n'est pas déductible du code.
 
 ```bash
 python -m optimizer.main     # résout et génère vrp_visualization.html
-pytest                       # 77 tests, environ 55 s
+pytest                       # 547 tests, environ 2 min
 pytest -m "not slow"         # sans la résolution de référence, environ 20 s
 python tools/capture_demo.py # regénère la démo animée (images + mp4 + gif)
 ```
 
-Le point d'entrée est `optimizer/main.py`. Il régénère les données jouet à
-chaque exécution (graine fixée par `Config.RANDOM_SEED`).
+Le point d'entrée est `cvrptw-solve` (`optimizer/main.py`), qui régénère les
+données à chaque exécution et écrit le document de tournée. `cvrptw-verify`
+recontrôle ce document sans faire confiance à ce qu'il annonce, et `cvrptw-audit`
+juge la qualité géométrique du résultat. L'interface qui l'affiche est dans
+`web/` ; c'est la seule, et elle est partagée avec le portfolio.
 
 ## Pièges à connaître
 
-**`solve_vrp` mute son argument.** `setup_data_extensions` ajoute les nœuds de
-hub et les nœuds fictifs, et porte `num_vehicles` à `num_réels + num_hubs`. La
-comparaison avec/sans hubs travaille donc sur deux états de données distincts.
-C'est pourquoi `solve_vrp_with_optimal_hubs` retourne `data_used` : toujours
-utiliser cette valeur en aval, jamais le `data` d'origine.
+**`solve_vrp` mute son argument.** `setup_data_extensions` ajoute les points de
+rechargement et les paires dépôt/retrait au dictionnaire reçu. Les grandeurs
+lues en aval doivent donc l'être sur le dictionnaire ressorti de la résolution,
+jamais sur une copie prise avant. Il n'y a plus de véhicules fictifs : ils
+existaient pour encadrer le transfert dans le temps, ce que la contrainte de
+précédence imposait déjà, et chacun coûtait un véhicule entier dont la fin était
+forcée à 1 440 000 s dans une dimension portant un coût d'étalement global.
+
+**Un transfert est optionnel, et ses signes sont contre-intuitifs.** La
+dimension de capacité compte ce qu'un véhicule a distribué depuis son dernier
+plein. Un colis qui QUITTE le véhicule au dépôt de transfert en consomme donc
+(+1), comme une livraison ; un colis récupéré en rend (-1). Les deux signes ont
+été inversés pendant longtemps, ce qui faisait du rendez-vous un cadeau de
+capacité et permettait à un coursier de repartir avec des colis qu'il ne livrait
+jamais. Quatre contraintes tiennent l'ensemble : activations liées, véhicules
+distincts sous forme réifiée, précédence temporelle, et au moins un client servi
+après un retrait.
 
 **`SetAllowedVehiclesForIndex` est cassé depuis OR-Tools 9.15.** Signature C++
 passée à `absl::Span<const int>` sans typemap SWIG côté Python
@@ -38,24 +53,31 @@ d'import — ce qui provoque un `UnboundLocalError`. L'import est au niveau modu
 Les nœuds de hub vivent dans `locations`, `demands` et `time_windows` : baisser
 le compteur les laisse dans le modèle, et comme les disjonctions ne sont posées
 que sur `range(hub_start, hub_start + num_hubs)`, ils n'en reçoivent aucune. Un
-nœud sans disjonction est **obligatoire**. La variante « sans hubs » de
-`solve_vrp_with_optimal_hubs` traversait ainsi les hubs sous contrainte pendant
-que `get_activated_hubs`, qui boucle sur `num_hubs`, annonçait 0 hub activé.
+nœud sans disjonction est **obligatoire**. Une ancienne variante « sans hubs »
+traversait ainsi les hubs sous contrainte pendant que `get_activated_hubs`, qui
+boucle sur `num_hubs`, annonçait 0 hub activé.
 C'est de cet état défectueux que vient l'instantané publié dans le portfolio
 (`delivery-tour.json` : horizon 7178, 140,9 km, arrêts 20/17/19, 2 passages en
 hub). Il n'est plus reproductible depuis le correctif, et c'était le but.
 
 Pour vérifier ce genre de mécanisme, deux mesures non ambiguës : le nombre de
 disjonctions (`routing.GetNumberOfDisjunctions()`, attendu = clients +
-rechargements + hubs + fictifs) et le domaine de `ActiveVar` après
+rechargements + hubs + paires de transfert) et le domaine de `ActiveVar` après
 `CloseModel()` : `Min() == 1` signifie « nœud obligatoire ». Éviter
 `GetDisjunctionIndices`, surchargé en C++ par identifiant de disjonction et par
 index de nœud : depuis Python l'appel est ambigu et sa réponse ininterprétable.
 
-**Un hub ne sert qu'au transfert entre véhicules.** Il ne porte aucune demande :
-le traverser sans y échanger de colis ne fait qu'allonger la tournée. Dans
-`optimizer.scenario`, `hubs` pilote donc seul le comportement (0 = aucun hub,
-au-delà = transferts actifs) ; il n'existe pas d'état intermédiaire.
+**Le nœud de hub d'origine n'est pas le transfert.** Il ne porte aucune demande
+et coûte 500 m à abandonner : le solveur le traverse dès que le détour est moins
+cher, sans qu'aucun colis ne change de mains. Ce n'est pas un rendez-vous, c'est
+un survol — `hubsActivated` compte les seconds, `hubFlybys` les premiers. La
+confusion entre les deux a longtemps fait annoncer un transfert là où il n'y en
+avait aucun.
+
+**Le mou de la dimension de capacité doit être nul partout où rien n'est à
+absorber.** Laissé libre, il fait dériver le cumul sans qu'aucun colis ne bouge.
+Seuls les points de rechargement en ont besoin, et le cumul y est contraint à
+repartir de zéro : repasser au dépôt, c'est refaire le plein.
 
 **Ne pas appeler `solve_scenario` en parallèle dans un même processus.**
 `Config` porte des attributs de **classe** et `create_toy_data` initialise le
@@ -112,8 +134,20 @@ où les grosses instances réussissent et les petites échouent : plus l'instanc
 est dense, plus le coût marginal par client baisse, donc plus de clients passent
 la barre des 500 s.
 
+Deux précisions apportées depuis, par le harnais de calibration :
+
+- Le relevé ci-dessus ne se reproduit tel quel qu'en neutralisant l'étendue en
+  distance. `DISTANCE_SPAN_COEFFICIENT = 30` suffit à lui seul à faire abandonner
+  des clients dès `TIME_SPAN_COEFFICIENT = 1` lorsque la pénalité d'abandon vaut
+  100 000 : les deux termes d'étendue se cumulent. Attribuer la dégénérescence au
+  seul terme temporel est incomplet.
+- Le seuil se déplace exactement d'un facteur dix quand la pénalité d'abandon est
+  multipliée par dix, ce qui confirme la mécanique : c'est bien un arbitrage
+  entre coût d'étendue et prix d'un abandon.
+
 Ne pas toucher au coefficient sans mesurer : il est réglé autour du scénario de
 référence à trois véhicules, et le déplacer déplace tous les chiffres publiés.
+`experiments/` existe précisément pour que ce réglage cesse d'être une opinion.
 
 ## Conventions
 
@@ -124,7 +158,8 @@ référence à trois véhicules, et le déplacer déplace tous les chiffres publ
   `secrets.env`.
 - Les artefacts générés (`vrp_visualization.html`, `optimizer/tests/toy_data/`,
   `.cache/`) ne sont pas versionnés.
-- Commentaires et documentation en français.
+- Commentaires et documents de travail internes en français ; README et
+  documentation publique en anglais.
 - Toute fonctionnalité terminée est ajoutée à `features-inventory.md`, avec son
   point d'entrée et ses tests.
 - Le format du document de tournée (`optimizer/tour_format.py`) est un contrat
