@@ -19,6 +19,65 @@ arithmétique.
 Les résultats sont écrits dans `benchmarks/results/` (`results.json` et
 `table.txt`).
 
+## Comment lire nos écarts — et ce qu'ils ne disent pas
+
+Trois précautions, sans lesquelles ces chiffres seraient surévalués.
+
+### C101 résolu à l'optimum est le résultat le plus faible du lot
+
+Les instances **C1 sont groupées et à horizon court**, et les neuf partagent la même
+référence à dix véhicules. Atteindre l'optimum sur C101 prouve que la chaîne complète
+— lecture de l'instance, conversion, arithmétique, vérification — est juste. Cela ne
+prouve pas grand-chose sur la qualité de la recherche.
+
+Les chiffres qui portent sont **R101** (aléatoire uniforme) et **RC101** (mixte).
+C'est aussi RC1 que nos instances parisiennes ressemblent le plus : géographie mixte,
+horizon court.
+
+### Le comparateur publié n'est pas celui qu'on croit
+
+Le chiffre souvent cité pour OR-Tools — **4,01 % d'écart moyen, aucune référence
+atteinte sur cent** — vient de Vidal (2022), *Hybrid Genetic Search for the CVRP*,
+Computers & OR 140:105643, [DOI](https://doi.org/10.1016/j.cor.2021.105643). Il porte
+sur le jeu **Uchoa « X », du CVRP pur sans fenêtres de temps**, de 100 à 1 000 clients,
+avec un budget de `n × 2,4 s` et dix exécutions par instance.
+
+**Ce n'est pas notre comparateur.** Problème différent, géométrie différente, arrondi
+différent. Écrire « OR-Tools est à 4 %, nous sommes à 0,2 % » serait une comparaison
+pomme-orange.
+
+Le chiffre pertinent est ailleurs : les 4,01 % sont une moyenne **dominée par les
+grandes instances**. Autour de cent clients, l'écart publié d'OR-Tools est de l'ordre
+de **1,4 à 2,2 %**. Nos +0,19 % et +1,01 % sont donc meilleurs, mais **du même ordre de
+grandeur** — plausibles et bons, pas miraculeux.
+
+Sur du VRPTW à mille clients, la seule mesure publiée trouvée donne OR-Tools à
+**9,38 %** ([documentation PyVRP](https://pyvrp.org/setup/benchmarks.html), deux heures
+par instance, une seule graine).
+
+### Ces mesures ont une variance, et un seul échantillon par cellule
+
+Le budget est en **temps de mur**. Le nombre d'itérations dépend donc de la charge de
+la machine, et la campagne tournait à douze processus simultanés. Relevé : RC101 à 60 s,
+paramètres identiques, a rendu **98 clients servis** en campagne et **100** en
+diagnostic.
+
+Chaque écart de ce tableau porte cette variance, et repose sur **une seule exécution**.
+Les cellules marquées invalides sont **limites et sensibles à la charge**, pas des
+propriétés stables du solveur.
+
+La convention du champ, telle que la décrit Vidal : OR-Tools **est déterministe à
+entrée fixée**, mais dépend de l'ordre des clients dans le fichier. Dix exécutions
+s'obtiennent donc en **permutant cet ordre**, la permutation jouant le rôle de graine —
+il n'y en a pas d'autre. C'est ce qu'il faudrait faire pour publier ces chiffres.
+
+### Nous mesurons le moteur, pas la configuration livrée
+
+Pour coller à l'objectif de Solomon — distance pure, sans terme d'équilibrage — le
+harnais met à zéro les trois coefficients d'étalement et le coût fixe par véhicule.
+C'est la bonne façon de comparer, mais cela signifie que ces écarts qualifient **le
+moteur de routage**, et non la configuration de la démonstration.
+
 ## Le piège central : il y a deux familles de valeurs publiées
 
 Elles portent sur les mêmes instances et ne sont **pas** comparables. Les
