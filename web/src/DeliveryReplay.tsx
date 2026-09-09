@@ -1456,7 +1456,7 @@ export default function DeliveryReplay({
           </button>
 
           <button type="button" className="dr-btn" onClick={restart} aria-label={strings.restart}>
-            <RotateCcw size={15} />
+            <RotateCcw size={15} aria-hidden="true" />
           </button>
 
           <input
@@ -1514,12 +1514,13 @@ export default function DeliveryReplay({
 
         {/* ── Compose an instance and solve it ── */}
         <section className="dr-solve" aria-labelledby="dr-solve-title">
-          <div className="dr-solve-head">
-            <h2 className="dr-side-title" id="dr-solve-title">
-              {strings.solve.title}
-            </h2>
-            <p className="dr-solve-lede">{strings.solve.lede}</p>
-          </div>
+          {/* Le chapô du formulaire répétait l'introduction de la page, qui
+              annonce déjà que l'instance se modifie sous la carte. Un titre
+              suffit ; la redondance ne se voyait qu'une fois les cadres
+              retirés. */}
+          <h2 className="dr-side-title" id="dr-solve-title">
+            {strings.solve.title}
+          </h2>
 
           <div className="dr-solve-grid">
             <div className="dr-field">
@@ -1716,11 +1717,13 @@ export default function DeliveryReplay({
                 aria-pressed={active}
               >
                 <span className="dr-courier-top">
-                  <span className="dr-chip" style={{ background: color }}>{v.id + 1}</span>
+                  <i className="dr-line" style={{ background: color }} aria-hidden="true" />
                   <span className="dr-courier-name">
                     {strings.courier} {v.id + 1}
                   </span>
-                  <span className={`dr-phase dr-phase--${st.phase}`}>{strings.phase[st.phase]}</span>
+                  <span className="dr-courier-count">
+                    {v.served}<span className="dr-courier-of">/{s.customers}</span>
+                  </span>
                 </span>
                 <span className="dr-gauge" aria-hidden="true">
                   <span
@@ -1729,10 +1732,10 @@ export default function DeliveryReplay({
                   />
                 </span>
                 <span className="dr-courier-meta">
+                  <span>{strings.phase[st.phase]}</span>
                   <span>
                     {strings.load} <b>{st.load}</b>/{v.capacity}
                   </span>
-                  <span>{strings.courierServed.replace('{n}', String(v.served))}</span>
                 </span>
               </button>
             );
@@ -1762,11 +1765,8 @@ export default function DeliveryReplay({
         <div className="dr-stats">
           <h2 className="dr-side-title">{strings.stats.title}</h2>
           <dl>
-            <div><dt>{strings.stats.served}</dt><dd>{s.customersServed}/{s.customers}</dd></div>
-            <div><dt>{strings.stats.roadKm}</dt><dd>{s.roadKm} km</dd></div>
             <div><dt>{strings.stats.duration}</dt><dd>{hoursMinutes(s.horizon)}</dd></div>
             <div><dt>{strings.stats.cumulative}</dt><dd>{hoursMinutes(s.cumulativeDriveTime)}</dd></div>
-            <div><dt>{strings.stats.reloads}</dt><dd>{s.reloads}</dd></div>
             <div><dt>{strings.stats.tardiness}</dt><dd>{s.tardinessMinutes} min</dd></div>
             <div className="dr-stat-wide">
               <dt>{strings.stats.hubs}</dt>
