@@ -28,38 +28,85 @@ import json
 import math
 import os
 import tempfile
+import time
 import urllib.error
 import urllib.request
 
+#: Serveur de routage. Par défaut l'instance **cycliste** de FOSSGIS.
+#:
+#: `routing.openstreetmap.de` héberge trois instances OSRM derrière trois
+#: préfixes, et ce sont bien trois graphes distincts. Mesuré sur un même couple
+#: de points parisiens :
+#:
+#: ===============  ==========  ==========  =====================
+#: préfixe          distance    durée       vitesse implicite
+#: ===============  ==========  ==========  =====================
+#: `routed-bike`     1 744,2 m    786,6 s    8,0 km/h
+#: `routed-car`      1 140,0 m    205,9 s   19,9 km/h
+#: `routed-foot`     1 256,5 m  1 005,5 s    4,5 km/h
+#: ===============  ==========  ==========  =====================
+#:
+#: C'est le **préfixe d'hôte** qui choisit le graphe, jamais le segment de
+#: profil dans le chemin : `/route/v1/driving/` et `/route/v1/bike/` rendent le
+#: même résultat sur `routed-bike`. Ne pas confondre les deux, sous peine de
+#: croire avoir changé de moteur en changeant l'URL.
+#:
+#: Conditions d'usage (<https://routing.openstreetmap.de/about.html>) : une
+#: requête par seconde au plus, un `User-Agent` identifiant l'application — celui
+#: d'une bibliothèque est explicitement jugé insuffisant — et l'attribution des
+#: données côté interface. L'hôte n'est délibérément pas figé dans le code, les
+#: conditions le recommandent, et cela laisse la porte ouverte à une instance
+#: locale ou à un autre fournisseur.
+#:
+#: Aucune disponibilité n'est garantie : le cache disque et le repli à vol
+#: d'oiseau sont ce qui rend une panne supportable.
 OSRM_BASE_URL = os.environ.get(
-    "OSRM_BASE_URL", "https://router.project-osrm.org"
+    "OSRM_BASE_URL", "https://routing.openstreetmap.de/routed-bike"
 )
 
-#: Profil de routage demandé à OSRM. Les tournées sont faites en **vélo cargo**,
-#: et tout le reste du projet en tient compte : 20 km/h de vitesse de repli,
-#: `DISTANCE_TO_TIME_FACTOR` calé sur la même vitesse. L'URL doit donc dire
-#: `bike`, ne serait-ce que pour ne pas mentir sur ce qu'on demande.
+#: Identité envoyée au serveur de routage. Les conditions de FOSSGIS refusent
+#: explicitement le `User-Agent` d'une bibliothèque — `urllib` annonce
+#: `Python-urllib/3.12`, exactement ce qu'elles écartent — et bloquent
+#: l'usurpation. C'est la première cause de blocage, et elle est gratuite à
+#: éviter.
+USER_AGENT = os.environ.get(
+    "OSRM_USER_AGENT",
+    "livraison-cvrptw/1.0 (+https://github.com/Skeeder1/livraison)",
+)
+
+#: Intervalle minimal entre deux requêtes, en secondes. Les conditions imposent
+#: une requête par seconde et une seule connexion pour un script. La géométrie
+#: est demandée une fois par véhicule, donc jusqu'à six fois d'affilée : sans
+#: cette attente, une seule résolution suffirait à dépasser le débit autorisé.
+INTERVALLE_MINIMAL_S = float(os.environ.get("OSRM_MIN_INTERVAL", "1.0"))
+
+#: Date de la dernière requête, pour tenir l'intervalle. Un flottant de module
+#: plutôt qu'un verrou : `solve_scenario` n'est de toute façon pas sûre en
+#: concurrence dans un même processus et ses appelants la sérialisent déjà.
+_derniere_requete = 0.0
+
+#: Segment de profil dans le chemin de l'API. **Cosmétique** : `osrm-routed` sert
+#: le graphe sur lequel il a été démarré et ignore ce segment. C'est
+#: `OSRM_BASE_URL` qui décide du mode de déplacement, pas cette valeur.
 #:
-#: **Mais le serveur public de démonstration ignore ce segment d'URL.** Mesuré
-#: sur un même couple de points parisiens : `driving`, `bike`, `cycling` et
-#: `foot` renvoient tous 2 110,6 m et 405,4 s, avec `weight_name=routability`.
-#: Une seule instance, celle de la voiture. Éditer cette valeur ne suffit donc
-#: pas à obtenir un itinéraire cycliste, et il ne faut pas croire l'avoir fait.
+#: Elle reste dans la clé de cache parce qu'une instance tierce, elle, pourrait
+#: le lire, et que deux moteurs ne doivent jamais se relire l'un l'autre.
 #:
-#: L'écart est mesurable et il déplace les décisions, pas seulement l'affichage.
-#: Comparaison de la matrice voiture d'OSRM à la matrice `bicycle` de Valhalla
-#: sur vingt points réels de l'instance de référence, 380 couples :
+#: Ce que change vraiment le passage de la voiture au vélo, mesuré sur les 48
+#: points réels de l'instance de référence, 2 256 couples, `routed-bike` contre
+#: `routed-car` :
 #:
-#: * distances vélo/voiture : médiane 0,945 — le vélo coupe par où la voiture ne
+#: * distances vélo/voiture : médiane 0,935 — le vélo coupe par où la voiture ne
 #:   passe pas (contresens cyclables, voies vertes), et rallonge ailleurs ;
-#: * durées vélo/voiture : médiane 1,523. Vitesse implicite 27,6 km/h pour la
-#:   voiture contre 16,7 km/h pour le vélo ;
-#: * le classement des arcs par longueur se déplace de 14 places sur 380 en
-#:   médiane, jusqu'à 122. Ce n'est donc pas une homothétie : le solveur ne
-#:   choisirait pas les mêmes arcs.
+#: * durées vélo/voiture : médiane 1,883. Vitesse implicite 28,0 km/h pour la
+#:   voiture contre **13,2 km/h** pour le vélo ;
+#: * mesure indépendante sur le moteur Valhalla, 380 couples : 0,945 et 1,523,
+#:   16,7 km/h. Deux moteurs, même conclusion sur le sens et l'ordre de grandeur.
 #:
-#: Pour un vrai routage cycliste il faut une instance qui serve le profil, ou un
-#: autre moteur. `OSRM_BASE_URL` est là pour ça.
+#: Le classement des arcs par longueur se déplace d'une médiane de 14 places sur
+#: 380 : ce n'est pas une homothétie, le solveur ne choisit pas les mêmes arcs.
+#: `VITESSE_DE_REPLI_M_PAR_S` et `Config.DISTANCE_TO_TIME_FACTOR`, tous deux calés
+#: sur 20 km/h, sont donc optimistes d'environ moitié par rapport au routage réel.
 OSRM_PROFILE = os.environ.get("OSRM_PROFILE", "bike")
 DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache", "osrm")
 #: Conservé pour les appelants qui l'importaient. Utiliser `cache_dir()`, qui
@@ -70,6 +117,27 @@ REQUEST_TIMEOUT = 30
 #: Vitesse retenue pour combler un couple qu'OSRM ne sait pas relier, en m/s.
 #: 20 km/h, l'ordre de grandeur d'un vélo cargo en ville.
 VITESSE_DE_REPLI_M_PAR_S = 20_000 / 3600
+
+
+def _ouvrir(url):
+    """
+    Effectue une requête vers le serveur de routage, en respectant ses règles.
+
+    Deux choses qu'aucun des deux appelants ne doit avoir à se rappeler : le
+    `User-Agent` exigé, et l'intervalle d'une seconde entre deux requêtes. Les
+    centraliser ici est ce qui garantit qu'elles s'appliquent aux itinéraires
+    comme à la matrice.
+
+    L'attente est faite avant l'appel et non après : deux requêtes séparées
+    naturellement par un long calcul ne paient rien.
+    """
+    global _derniere_requete
+    depuis = time.monotonic() - _derniere_requete
+    if depuis < INTERVALLE_MINIMAL_S:
+        time.sleep(INTERVALLE_MINIMAL_S - depuis)
+    _derniere_requete = time.monotonic()
+    requete = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    return urllib.request.urlopen(requete, timeout=REQUEST_TIMEOUT)
 
 
 def cache_dir():
@@ -194,7 +262,7 @@ def fetch_route_legs(waypoints):
     )
 
     try:
-        with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT) as response:
+        with _ouvrir(url) as response:
             payload = json.load(response)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
         print(f"   ⚠️  OSRM injoignable ({exc}) — aucune géométrie routière.")
@@ -264,7 +332,7 @@ def fetch_table(locations):
     url = f"{OSRM_BASE_URL}/table/v1/{OSRM_PROFILE}/{coords}?annotations=duration,distance"
 
     try:
-        with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT) as response:
+        with _ouvrir(url) as response:
             payload = json.load(response)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
         raise TableIndisponible(f"OSRM injoignable : {exc}") from exc

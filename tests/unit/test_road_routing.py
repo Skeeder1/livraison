@@ -43,17 +43,65 @@ class _FakeResponse(io.StringIO):
         return False
 
 
+@pytest.fixture(autouse=True)
+def sans_etranglement(monkeypatch):
+    """Supprime l'attente d'une seconde entre deux requêtes, le temps des tests.
+
+    L'intervalle est une obligation envers le serveur de FOSSGIS, pas une
+    propriété du cache ni du repli : le faire payer à chaque test qui simule un
+    appel réseau rendrait la suite lente sans rien vérifier de plus. Il est
+    éprouvé une fois, explicitement, par `TestEtranglement`.
+    """
+    monkeypatch.setattr(road_routing, "INTERVALLE_MINIMAL_S", 0.0)
+    monkeypatch.setattr(road_routing, "_derniere_requete", 0.0)
+
+
 @pytest.fixture
 def osrm_repond(monkeypatch):
     """Remplace l'appel réseau par une réponse OSRM valide, et compte les appels."""
     appels = []
 
-    def faux_urlopen(url, timeout=None):
-        appels.append(url)
+    def faux_urlopen(requete, timeout=None):
+        appels.append(requete)
         return _FakeResponse(json.dumps(OSRM_PAYLOAD))
 
     monkeypatch.setattr(road_routing.urllib.request, "urlopen", faux_urlopen)
     return appels
+
+
+class TestEtranglement:
+    """Les règles du serveur public : une identité, et une requête par seconde."""
+
+    def test_l_identite_de_l_application_est_envoyee(self, osrm_repond, cache_temporaire):
+        """Les conditions de FOSSGIS écartent le `User-Agent` d'une bibliothèque.
+
+        `urllib` annonce `Python-urllib/3.x`, précisément ce qu'elles jugent
+        insuffisant, et l'usurpation vaut un blocage immédiat.
+        """
+        # ── ACT ────────────────────────────────────────────────────
+        road_routing.fetch_route_legs(WAYPOINTS)
+
+        # ── ASSERT ─────────────────────────────────────────────────
+        envoye = osrm_repond[0].get_header("User-agent")
+        assert envoye == road_routing.USER_AGENT
+        assert "urllib" not in envoye.lower(), "le UA d'une bibliothèque est refusé"
+
+    def test_deux_requetes_sont_espacees(self, osrm_repond, cache_temporaire, monkeypatch):
+        """Une requête par seconde au plus : la géométrie est demandée une fois
+        par véhicule, donc jusqu'à six fois d'affilée."""
+        # ── ARRANGE ────────────────────────────────────────────────
+        monkeypatch.setattr(road_routing, "INTERVALLE_MINIMAL_S", 1.0)
+        monkeypatch.setattr(road_routing, "_derniere_requete", 0.0)
+        dormi = []
+        monkeypatch.setattr(road_routing.time, "sleep", dormi.append)
+
+        # ── ACT ────────────────────────────────────────────────────
+        road_routing._ouvrir("http://exemple/1").close()
+        road_routing._ouvrir("http://exemple/2").close()
+
+        # ── ASSERT ─────────────────────────────────────────────────
+        assert len(dormi) == 1, "la seconde requête doit attendre, pas la première"
+        assert 0 < dormi[0] <= 1.0, f"attente incohérente : {dormi[0]}"
 
 
 @pytest.fixture

@@ -659,11 +659,25 @@ def configure_search_parameters(data):
     return search_parameters
 
 
-def solve_vrp(data):
+def solve_vrp(data, on_solution=None):
     """
     Fonction principale pour résoudre le VRP.
-    
+
     :param data: Dictionnaire de données du problème
+    :param on_solution: Rappel optionnel, appelé à **chaque solution
+        améliorante** trouvée pendant la recherche, avec le modèle en argument.
+        Lire l'objectif courant par ``routing.CostVar().Max()``.
+
+        Le budget de recherche est un plafond, jamais un critère d'arrêt : la
+        métaheuristique améliore en continu et rend la meilleure solution qu'elle
+        a vue. On ne peut donc pas savoir, de l'extérieur, si une résolution a
+        convergé ou si elle a été coupée en pleine progression — les deux rendent
+        « une solution ». Ce rappel est ce qui rend la différence observable, et
+        c'est la mesure dont dépend le choix d'un budget plutôt que sa
+        supposition.
+
+        Le rappel doit être bref : il s'exécute dans la boucle de recherche, et
+        le temps qu'il prend est pris sur le budget qu'il sert à mesurer.
     :return: Manager, routing model et solution
     """
     # 1. Étendre les données
@@ -706,7 +720,11 @@ def solve_vrp(data):
 
     # 9. Configurer les paramètres de recherche
     search_parameters = configure_search_parameters(data)
-    
+
+    # 9 bis. Observer la trajectoire, si l'appelant le demande.
+    if on_solution is not None:
+        routing.AddAtSolutionCallback(lambda: on_solution(routing))
+
     # 10. Résoudre
     solution = routing.SolveWithParameters(search_parameters)
 
