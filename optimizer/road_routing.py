@@ -34,6 +34,33 @@ import urllib.request
 OSRM_BASE_URL = os.environ.get(
     "OSRM_BASE_URL", "https://router.project-osrm.org"
 )
+
+#: Profil de routage demandé à OSRM. Les tournées sont faites en **vélo cargo**,
+#: et tout le reste du projet en tient compte : 20 km/h de vitesse de repli,
+#: `DISTANCE_TO_TIME_FACTOR` calé sur la même vitesse. L'URL doit donc dire
+#: `bike`, ne serait-ce que pour ne pas mentir sur ce qu'on demande.
+#:
+#: **Mais le serveur public de démonstration ignore ce segment d'URL.** Mesuré
+#: sur un même couple de points parisiens : `driving`, `bike`, `cycling` et
+#: `foot` renvoient tous 2 110,6 m et 405,4 s, avec `weight_name=routability`.
+#: Une seule instance, celle de la voiture. Éditer cette valeur ne suffit donc
+#: pas à obtenir un itinéraire cycliste, et il ne faut pas croire l'avoir fait.
+#:
+#: L'écart est mesurable et il déplace les décisions, pas seulement l'affichage.
+#: Comparaison de la matrice voiture d'OSRM à la matrice `bicycle` de Valhalla
+#: sur vingt points réels de l'instance de référence, 380 couples :
+#:
+#: * distances vélo/voiture : médiane 0,945 — le vélo coupe par où la voiture ne
+#:   passe pas (contresens cyclables, voies vertes), et rallonge ailleurs ;
+#: * durées vélo/voiture : médiane 1,523. Vitesse implicite 27,6 km/h pour la
+#:   voiture contre 16,7 km/h pour le vélo ;
+#: * le classement des arcs par longueur se déplace de 14 places sur 380 en
+#:   médiane, jusqu'à 122. Ce n'est donc pas une homothétie : le solveur ne
+#:   choisirait pas les mêmes arcs.
+#:
+#: Pour un vrai routage cycliste il faut une instance qui serve le profil, ou un
+#: autre moteur. `OSRM_BASE_URL` est là pour ça.
+OSRM_PROFILE = os.environ.get("OSRM_PROFILE", "bike")
 DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache", "osrm")
 #: Conservé pour les appelants qui l'importaient. Utiliser `cache_dir()`, qui
 #: relit l'environnement à chaque appel.
@@ -63,7 +90,14 @@ def _cache_path(waypoints, prefix=""):
         itinéraire et la matrice complète n'ont pas le même contenu, et sans lui
         la seconde écraserait la première.
     """
-    key = json.dumps([prefix] + [[round(lat, 6), round(lon, 6)] for lat, lon in waypoints])
+    # Le serveur et le profil font partie de la clé. Sans eux, basculer vers une
+    # instance cycliste relirait les itinéraires voiture déjà en cache : le
+    # changement de moteur n'aurait aucun effet visible, et le cache mentirait
+    # d'autant plus longtemps qu'il est persistant.
+    key = json.dumps(
+        [prefix, OSRM_BASE_URL, OSRM_PROFILE]
+        + [[round(lat, 6), round(lon, 6)] for lat, lon in waypoints]
+    )
     digest = hashlib.sha256(key.encode()).hexdigest()[:16]
     return os.path.join(cache_dir(), f"{digest}.json")
 
@@ -155,7 +189,7 @@ def fetch_route_legs(waypoints):
     # OSRM attend des couples lon,lat — l'inverse de la convention usuelle.
     coords = ";".join(f"{lon:.6f},{lat:.6f}" for lat, lon in waypoints)
     url = (
-        f"{OSRM_BASE_URL}/route/v1/driving/{coords}"
+        f"{OSRM_BASE_URL}/route/v1/{OSRM_PROFILE}/{coords}"
         "?overview=full&geometries=geojson&steps=true"
     )
 
@@ -227,7 +261,7 @@ def fetch_table(locations):
         return np.array(cached["distances"]), np.array(cached["durations"])
 
     coords = ";".join(f"{lon:.6f},{lat:.6f}" for lat, lon in locations)
-    url = f"{OSRM_BASE_URL}/table/v1/driving/{coords}?annotations=duration,distance"
+    url = f"{OSRM_BASE_URL}/table/v1/{OSRM_PROFILE}/{coords}?annotations=duration,distance"
 
     try:
         with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT) as response:

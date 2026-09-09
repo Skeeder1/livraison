@@ -121,6 +121,28 @@ class TestCacheOsrm:
         assert len(legs) == 2
         assert len(osrm_repond) == 1, "le cache illisible devait déclencher un recalcul"
 
+    def test_le_profil_et_le_serveur_separent_les_caches(self, monkeypatch):
+        """Deux moteurs de routage ne doivent jamais se relire l'un l'autre.
+
+        Le projet livre en vélo cargo, et le serveur public de démonstration
+        ignore le profil dans l'URL : `driving` et `bike` y rendent la même
+        matrice voiture. Le jour où l'on pointe vers une instance qui, elle,
+        sert le profil, une clé de cache aveugle au profil relirait les
+        itinéraires voiture déjà écrits et le changement de moteur n'aurait
+        aucun effet — sans que rien ne le signale.
+        """
+        # ── ARRANGE / ACT ──────────────────────────────────────────
+        monkeypatch.setattr(road_routing, "OSRM_PROFILE", "driving")
+        voiture = road_routing._cache_path(WAYPOINTS)
+        monkeypatch.setattr(road_routing, "OSRM_PROFILE", "bike")
+        velo = road_routing._cache_path(WAYPOINTS)
+        monkeypatch.setattr(road_routing, "OSRM_BASE_URL", "http://localhost:5000")
+        velo_ailleurs = road_routing._cache_path(WAYPOINTS)
+
+        # ── ASSERT ─────────────────────────────────────────────────
+        assert voiture != velo, "le profil doit entrer dans la clé de cache"
+        assert velo != velo_ailleurs, "le serveur doit entrer dans la clé de cache"
+
     def test_le_repertoire_est_relu_dans_l_environnement(self, tmp_path, monkeypatch):
         """`OSRM_CACHE_DIR` doit pouvoir être posée après l'import du module."""
         # ── ARRANGE ────────────────────────────────────────────────
