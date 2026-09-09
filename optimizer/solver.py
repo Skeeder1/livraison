@@ -479,7 +479,7 @@ def setup_time_constraints(routing, manager, data, time_dimension, num_real_vehi
                 routing.AddToAssignment(time_dimension.SlackVar(index))
 
     # Set vehicle start and end times
-    penalty_slack = 100
+    penalty_slack = Config.WAITING_PENALTY
     for vehicle_id in range(num_real_vehicles):
         index = routing.Start(vehicle_id)
         time_dimension.CumulVar(index).SetValue(int(data['start_times'][vehicle_id]))

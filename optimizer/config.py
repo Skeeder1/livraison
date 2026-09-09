@@ -81,6 +81,25 @@ class Config:
     # d'un réglage manuel, à calibrer, cf. `experiments/`.
     VEHICLE_FIXED_COST_METERS = 50
 
+    # Coût d'une seconde d'attente, dans l'unité du coût d'arc — le mètre.
+    #
+    # À 100, une seconde passée à attendre coûte autant que cent mètres
+    # parcourus, soit près de vingt secondes de conduite à 20 km/h. Le solveur
+    # préférera donc rouler plutôt que patienter, ce qui n'a rien d'évident pour
+    # un coursier arrivé en avance devant une porte close.
+    #
+    # La valeur était écrite en dur dans `setup_time_constraints`, au milieu du
+    # bloc réglant l'heure de départ des véhicules — ce qui la faisait passer
+    # pour un détail de démarrage. Elle porte en réalité sur l'attente cumulée de
+    # toute la tournée : `SetSlackCostCoefficientForVehicle` coûte
+    # `coefficient x (fin - départ - transit total)`.
+    #
+    # Sans effet tant que les fenêtres de temps sont ouvertes sur 24 h, puisque
+    # personne n'attend. Déterminante dès qu'elles se resserrent : la campagne de
+    # référence sur les instances de Solomon, où l'attente est gratuite, a dû
+    # diluer ce terme pour que la comparaison ait un sens.
+    WAITING_PENALTY = 100
+
     DISTANCE_TO_TIME_FACTOR = 20000.0
     SERVICE_TIME_PER_UNIT = 60  # 60 seconds per demand unit for service time
 
