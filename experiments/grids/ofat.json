@@ -8,43 +8,95 @@
     "time_windows_binding": false
   },
   "scenario_variants": [
-    {"hubs": 0},
-    {"hubs": 2},
-    {"hubs": 0, "time_windows_binding": true}
+    {
+      "hubs": 0
+    },
+    {
+      "hubs": 2
+    },
+    {
+      "hubs": 0,
+      "time_windows_binding": true
+    }
   ],
   "baseline_factors": {},
   "sweeps": [
     {
       "factor": "TRANSFER_PENALTY_METERS",
-      "values": [0, 1000, 10000, 100000, 1000000]
+      "values": [
+        0,
+        1000,
+        10000,
+        100000,
+        1000000
+      ]
     },
     {
       "factor": "DROP_CUSTOMER_PENALTY_METERS",
-      "log_range": {"from": 10000, "to": 10000000, "points": 7}
+      "log_range": {
+        "from": 10000,
+        "to": 10000000,
+        "points": 7
+      }
     },
     {
       "factor": "TIME_SPAN_COEFFICIENT",
-      "values": [5, 15, 50, 100, 200, 500, 1500, 5000]
+      "values": [
+        5,
+        15,
+        50,
+        100,
+        200,
+        500,
+        1500,
+        5000
+      ]
     },
     {
       "factor": "CAPACITY_SPAN_COEFFICIENT",
-      "values": [1, 5, 15, 50, 150, 500, 1500]
+      "values": [
+        1,
+        5,
+        15,
+        50,
+        150,
+        500,
+        1500
+      ]
     },
     {
       "factor": "DISTANCE_SPAN_COEFFICIENT",
-      "values": [1, 3, 10, 30, 100, 300, 1000]
+      "values": [
+        1,
+        3,
+        10,
+        30,
+        100,
+        300,
+        1000
+      ]
     },
     {
       "factor": "TIME_WINDOW_VIOLATION_PENALTY",
-      "values": [500, 2000, 10000, 50000, 200000, 1000000]
-    },
-    {
-      "factor": "SERVICE_TIME_PER_UNIT",
-      "values": [5, 15, 30, 60, 120, 240]
+      "values": [
+        500,
+        2000,
+        10000,
+        50000,
+        200000,
+        1000000
+      ]
     },
     {
       "factor": "VEHICLE_FIXED_COST_METERS",
-      "values": [0, 50, 500, 5000, 50000, 500000]
+      "values": [
+        0,
+        50,
+        500,
+        5000,
+        50000,
+        500000
+      ]
     }
   ]
 }

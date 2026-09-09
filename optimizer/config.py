@@ -6,7 +6,17 @@ class Config:
     TIME_TO_SOLVE = 30  # seconds (increased for better load balancing)
 
     # Objective function coefficients for load balancing
-    TIME_SPAN_COEFFICIENT = 200        # OPTIMAL: Config 1 - Best performance/balance tradeoff
+    # Mesuré, pas supposé : 30 graines appariées, deux scénarios, deux budgets
+    # (cf. `experiments/`, campagne du 2026-09-09). À 200 la valeur livrée perdait
+    # 30/30 graines sans hub et 29/30 avec, contre 5.
+    #
+    # L'écart est surtout un écart de CONVERGENCE. À 10 s de budget, passer à 5
+    # fait gagner 3 186 s de makespan et 30,9 km ; à 30 s, il ne reste que 76 s
+    # et 2,3 km, parce que la configuration livrée finit par rattraper son
+    # retard. Un coefficient élevé ne dégrade pas l'optimum, il ralentit la
+    # recherche qui y mène. La valeur retenue est celle qui gagne ou égalise
+    # partout, jamais celle qui brille au budget le plus court.
+    TIME_SPAN_COEFFICIENT = 5
     CAPACITY_SPAN_COEFFICIENT = 50     # OPTIMAL: Config 1
     DISTANCE_SPAN_COEFFICIENT = 30     # OPTIMAL: Config 1
 

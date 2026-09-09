@@ -297,3 +297,42 @@ seuil : c'est le dimensionnement de la campagne complète.
   venait à répondre le contraire, le plan devrait changer, pas seulement le code.
 * **Choix des instances où les transferts sont rentables** (étape 4 du plan de
   travail) : c'est un usage du harnais, pas une fonction du harnais.
+
+## Un facteur retiré du plan, et pourquoi
+
+`SERVICE_TIME_PER_UNIT` figurait au départ parmi les facteurs balayés. La
+campagne du 2026-09-09 l'a « recommandé » à 5 au lieu de 60, en gagnant 30
+graines sur 30 et 2 632 s de makespan. La recommandation est rejetée, et le
+facteur retiré.
+
+Ce n'est pas un réglage : c'est une donnée physique du problème, le temps qu'un
+coursier passe à remettre un colis. L'abaisser ne rend pas le solveur meilleur,
+cela retire 45 × 55 s de travail à accomplir. Le critère externe baisse donc
+mécaniquement, sans qu'aucune tournée ne soit mieux construite.
+
+C'est la circularité que `criterion.py` interdit, revenue par une autre porte.
+La règle qu'on en tire, et qu'il faut appliquer avant d'ajouter un facteur :
+
+> Un facteur ne doit pouvoir déplacer le critère externe **qu'en améliorant la
+> recherche**. S'il le déplace en changeant l'énoncé du problème, il n'a rien à
+> faire dans le plan.
+
+Au même titre, ne jamais balayer le nombre de clients, la capacité des
+véhicules, ni le budget de résolution : tous rendraient le critère meilleur en
+rendant le problème plus facile.
+
+## Ce que la campagne a établi
+
+Les coefficients d'étalement pesaient lourd — mais sur la **vitesse de
+convergence**, pas sur la qualité de l'optimum. À 10 s de budget,
+`TIME_SPAN_COEFFICIENT = 5` bat la valeur livrée sur 30 graines sur 30, avec
+3 186 s et 30,9 km d'écart. Au triple du budget, il ne reste que 76 s et 2,3 km :
+la configuration livrée finit par arriver au même endroit.
+
+C'est exactement ce que le contrôle de stabilité existe pour attraper. Sans lui,
+la campagne aurait publié un gain de 30 % qui s'évapore dès qu'on laisse tourner
+la recherche plus longtemps.
+
+Retenu : `TIME_SPAN_COEFFICIENT = 5`, seule valeur qui gagne ou égalise aux deux
+budgets et dans les deux scénarios. Les autres facteurs restent à leur valeur
+livrée, faute d'effet qui survive au changement de budget.
