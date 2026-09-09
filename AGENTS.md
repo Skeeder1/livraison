@@ -7,7 +7,9 @@ ce fichier retient ce qui n'est pas déductible du code.
 
 ```bash
 python -m optimizer.main     # résout et génère vrp_visualization.html
-pytest                       # 547 tests, environ 2 min
+pytest                       # 548 tests, environ 2 min
+scripts/check.sh             # la porte complète : lint, tests, types, interface
+scripts/check.sh --rapide    # ce que le crochet pre-push exécute
 pytest -m "not slow"         # sans la résolution de référence, environ 20 s
 python tools/capture_demo.py # regénère la démo animée (images + mp4 + gif)
 ```
@@ -17,6 +19,11 @@ données à chaque exécution et écrit le document de tournée. `cvrptw-verify`
 recontrôle ce document sans faire confiance à ce qu'il annonce, et `cvrptw-audit`
 juge la qualité géométrique du résultat. L'interface qui l'affiche est dans
 `web/` ; c'est la seule, et elle est partagée avec le portfolio.
+
+**Déclarer les crochets après un clone.** `git config core.hooksPath .githooks`
+Sans cela le crochet `pre-push` ne s'exécute pas, et rien n'empêche de pousser
+du code qui ne passe pas. Il n'y a pas d'intégration continue distante pour
+rattraper : le compte GitHub ne peut pas démarrer d'Actions.
 
 ## Pièges à connaître
 
@@ -66,6 +73,22 @@ rechargements + hubs + paires de transfert) et le domaine de `ActiveVar` après
 `CloseModel()` : `Min() == 1` signifie « nœud obligatoire ». Éviter
 `GetDisjunctionIndices`, surchargé en C++ par identifiant de disjonction et par
 index de nœud : depuis Python l'appel est ambigu et sa réponse ininterprétable.
+
+**Le rendez-vous ne paie pas, et ce n'est pas un défaut de réglage.** Mesuré sur
+quatre formes de demande, environ 700 résolutions : sur une demande uniforme le
+solveur ne le retient jamais ; sur un amas avec dépôt au milieu il le retient
+48 fois et y perd 1,9 km ; sur un amas avec dépôt isolé il ne le retient pas.
+Faire porter 2, 4 ou 6 colis à l'échange ne change rien, puisque le mécanisme
+n'est pas retenu.
+
+La raison est structurelle : un transfert ne crée pas de colis plus près du
+client. Tous viennent du dépôt, et un rendez-vous ne fait que redistribuer qui
+porte quoi. Son coût est deux détours vers un point commun ; son seul gain
+possible est d'éviter une partie d'un rechargement. Dépôt au milieu des clients,
+le rechargement est presque gratuit — on sert des gens au retour. Dépôt isolé,
+toutes les tournées empruntent déjà le même couloir. Ne pas relancer une
+campagne de réglage là-dessus sans changer la structure du problème
+(plusieurs dépôts, entrées de colis multiples).
 
 **Le nœud de hub d'origine n'est pas le transfert.** Il ne porte aucune demande
 et coûte 500 m à abandonner : le solveur le traverse dès que le détour est moins

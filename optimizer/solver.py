@@ -106,7 +106,7 @@ def setup_data_extensions(data):
         current_num += 1
 
     # Add deposit and pickup for each hub for transfers
-    hub_capacity = 1
+    hub_capacity = Config.TRANSFER_SIZE
     data['hub_deposits'] = []
     data['hub_pickups'] = []
     hub_start = 1 + data['num_customers']

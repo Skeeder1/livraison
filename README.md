@@ -74,9 +74,43 @@ pair became **infeasible**: both vehicle variables equal `-1` when the nodes are
 inactive, and `-1 != -1` is false. The meeting was therefore compulsory at every
 hub — which is not a model of collaboration, it is a model of forced detours.
 
-> Whether the hand-over actually pays is an empirical question, and this
-> repository answers it by measurement rather than assertion. See
-> [`experiments/`](experiments/).
+### Does the hand-over pay? Measured: no — and the reason is the interesting part
+
+The honest answer, from about 700 solves across four instance shapes:
+
+| demand shape | hand-overs the solver kept | result at convergence |
+|---|---|---|
+| uniform across Paris | 0 | never chosen |
+| clustered, depot inside the demand | 48 | **+1.9 km worse** |
+| clustered, depot isolated from it | 0 | never chosen |
+| exchanges of 2, 3, 4, 6 parcels | 0 | identical — size is irrelevant when the mechanism is declined |
+
+Two false leads were followed and discarded on the way, both worth naming. A
+clustered instance appeared to gain 11 km — until the transfer count turned out
+to be **zero**, so the gain had nothing to do with hand-overs. And an apparent
+10.5 km gain collapsed to 0.8 km at three times the search budget: it was the
+search converging, not the model improving. Every number here is therefore
+reported at the longer budget, with paired seeds.
+
+**Why it cannot pay, stated plainly:** a transfer never creates a parcel closer
+to a customer. Every parcel starts at the depot. A rendezvous only redistributes
+*who carries what* — somebody still has to fetch them. Its cost is two detours
+to a shared point; its only possible saving is part of a reload. When the depot
+sits among the customers, a courier going back to reload serves people on the
+way, so the reload is nearly free and no meeting can beat it. When the depot is
+isolated, every route already runs the same corridor, so meeting on it saves
+nothing the corridor did not already give.
+
+Measured waiting time at a rendezvous is **zero** in every run, so the cost is
+not synchronisation — it is purely the two detours.
+
+This is the project's original ambition, answered with numbers rather than
+abandoned: mobile hubs are not merely hard to *compute*, they are hard to make
+*worthwhile* under single-depot delivery. Multi-depot or supplier-direct flows,
+where parcels enter the network at several points, are where the idea would earn
+its keep — and that is a different problem, not a tuning of this one.
+
+The campaign that produced these figures is in [`experiments/`](experiments/).
 
 ## Screenshots
 
@@ -201,8 +235,28 @@ pytest -m "not slow"    # fast loop, about 20 s
 ```
 
 ```
-547 passed, 37 skipped in 117s
+548 passed, 37 skipped in 117s
 ```
+
+One command runs the whole gate — lint, tests, type check and the web build:
+
+```bash
+scripts/check.sh            # everything
+scripts/check.sh --rapide   # lint + fast tests, about a minute
+```
+
+A `pre-push` hook runs the fast variant and refuses a push that fails it. Hooks
+are not versioned under `.git/hooks`, so this one lives in `.githooks/` and is
+declared once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This is deliberately local rather than a GitHub workflow. Actions cannot start
+on this account, and a pipeline that never runs contributes nothing but a red
+cross on every commit — a gate that actually executes before the code leaves the
+machine is worth more than one that reports on it afterwards.
 
 Most of them assert **properties of the solution**, not frozen numbers: that no
 vehicle ever exceeds its capacity, that a reload restores a full load, that

@@ -66,6 +66,15 @@ class Config:
     # Valeur à calibrer expérimentalement, cf. `experiments/`.
     TRANSFER_PENALTY_METERS = 0
 
+    # Nombre de colis échangés lors d'un rendez-vous entre coursiers.
+    #
+    # La valeur était écrite en dur à 1 dans le solveur, ce qui condamnait le
+    # mécanisme : déplacer un seul colis coûte deux détours, un par coursier,
+    # pour économiser au mieux une fraction de rechargement. Le solveur retient
+    # bien le rendez-vous sur une demande groupée, mais y perd des kilomètres.
+    # Un échange n'a de sens économique que s'il porte plusieurs colis.
+    TRANSFER_SIZE = 1
+
     # Coût fixe d'utilisation d'un véhicule, en mètres (même unité que le coût
     # d'arc). Il incite à ne pas ouvrir une tournée pour trois clients : sans
     # lui, répartir sur tous les véhicules est toujours gratuit. Valeur héritée
