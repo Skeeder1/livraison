@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#
+# Refuse un push qui ne passe pas le lint et les tests rapides.
+#
+# Le crochet est versionné dans .githooks/, et non dans .git/hooks/ qui ne l'est
+# jamais. Il faut le déclarer une fois par clone :
+#
+#     git config core.hooksPath .githooks
+#
+# Pour outrepasser sciemment : git push --no-verify
+exec scripts/check.sh --rapide
