@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![OR-Tools](https://img.shields.io/badge/OR--Tools-9.15-4285F4?logo=google&logoColor=white)
 ![Leaflet](https://img.shields.io/badge/Leaflet-OpenStreetMap-199900?logo=leaflet&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-14%20passing-success)
+![Tests](https://img.shields.io/badge/tests-547%20passing-success)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
@@ -48,24 +48,35 @@ Search strategy: `PARALLEL_CHEAPEST_INSERTION` for the first solution, then **Gu
 
 Two mechanisms are worth calling out:
 
-**Reloading, modelled with dummy nodes.** OR-Tools cannot natively "empty" a vehicle mid-route. Each hub is therefore split into two nodes — a drop-off (negative demand) and a pick-up (positive demand) — linked by a dummy vehicle. The transfer becomes an ordinary routing constraint.
+**Reloading, modelled with duplicated depot nodes.** OR-Tools cannot natively "refill" a vehicle mid-route. Ten copies of the depot are added, each carrying a demand of minus one full load, and each optional at zero penalty. Visiting one resets the vehicle's capacity; the reset is constrained to be complete, so returning to the depot means leaving full again.
 
-**Customers are droppable.** Every node is placed in a disjunction with a penalty (`AddDisjunction`). Rather than declaring the problem infeasible when a constraint cannot be met, the solver may sacrifice a customer at an explicit cost — and the final report says so.
+**Nodes are droppable, and that is what makes the model honest.** Every node sits in a disjunction with an explicit penalty (`AddDisjunction`). Rather than declaring the problem infeasible when a constraint cannot be met, the solver may sacrifice a customer at a stated cost — and the report says which. The same mechanism is what makes a courier hand-over *optional* rather than imposed; see below.
 
-### The question the solver actually answers
+### The courier hand-over
 
-Hubs cost detours. Are they worth it? The program **solves the problem twice**, with and without hubs, then keeps whichever gives the better total delivery time:
+This is the part of the model that is not in any textbook sample, and the reason
+the project exists. The original brief was **mobile hubs**: two cargo-bike
+couriers meeting at a well-chosen point in the city to pass parcels between
+them, so that neither has to ride back to the depot.
 
-```
-🎯 SOLUTION COMPARISON
-   Without hubs : 5h 58m 36s
-   With hubs    : 29h 15m 25s
-   ✅ Solution WITHOUT hubs selected (hubs add 23h 16m 49s)
-```
+Each candidate meeting point is split into two nodes — a **deposit** and a
+**collection** at the same coordinates — tied together by four constraints:
 
-On this dataset the hubs do not pay off — the detour costs more than the reload saves. That is a result, not a failure: the tool exists precisely to settle that question on real data.
+| Constraint | Why |
+|---|---|
+| `ActiveVar(deposit) == ActiveVar(collection)` | both, or neither: a parcel put down must be picked up |
+| `IsDifferentVar(vehicle(deposit), vehicle(collection)) >= ActiveVar(deposit)` | two *different* couriers — but only if the meeting happens |
+| `CumulVar(deposit) <= CumulVar(collection)` | you cannot collect before it is dropped |
+| customer count strictly increases after a collection | a parcel taken on must be delivered to someone |
 
-> Figures are from one run. Because the search is bounded by wall-clock time (`TIME_TO_SOLVE = 30`), the exact seconds vary slightly between runs even with `RANDOM_SEED` fixed; the conclusion does not.
+The second one is reified for a reason. Written as a plain `!=`, dropping the
+pair became **infeasible**: both vehicle variables equal `-1` when the nodes are
+inactive, and `-1 != -1` is false. The meeting was therefore compulsory at every
+hub — which is not a model of collaboration, it is a model of forced detours.
+
+> Whether the hand-over actually pays is an empirical question, and this
+> repository answers it by measurement rather than assertion. See
+> [`experiments/`](experiments/).
 
 ## Screenshots
 
@@ -82,32 +93,42 @@ git clone https://github.com/Skeeder1/livraison.git
 cd livraison
 
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[cli,dev]"
+pip install -e ".[dev]"
 ```
 
 No API key is required: routing uses the public OSRM server and basemaps come from OpenStreetMap.
 
-The `cli` extra brings the interactive map, the charts and the coloured console
-output. Without it the install is the solver and its data, which is what a
-service calling `optimizer.scenario` wants: 139 MB instead of 320, and nothing
-installed that it never runs.
+The core install is the solver and nothing else — `ortools` and `numpy`. That is
+what a service calling `optimizer.scenario` wants, and nothing is pulled in that
+it never runs.
 
 ```bash
-pip install .              # solver only (ortools, numpy)
-pip install ".[analysis]"  # + aggregation of measurement campaigns
+pip install .                    # solver only
+pip install ".[experiments]"     # + plots for the calibration campaign
+pip install ".[dev]"             # + pytest and ruff
 ```
 
 ## Usage
 
 ```bash
-# Solve the problem and generate the animated map
-python -m optimizer.main
+# Solve, and write the tour document
+cvrptw-solve --customers 45 --vehicles 3 --hubs 2 --out tour.json
 
-# Open the result
-xdg-open vrp_visualization.html
+# Check that the answer is coherent, recomputed from scratch
+cvrptw-verify tour.json --data data/
+
+# Ask whether it also looks intelligent
+cvrptw-audit tour.json --carte
 ```
 
-The scenario is configured in [`optimizer/config.py`](optimizer/config.py):
+`cvrptw-solve` writes the same tour document the web interface consumes, so the
+whole loop runs locally:
+
+```bash
+cd web && npm install && npm run dev     # then load the tour.json produced above
+```
+
+Defaults live in [`optimizer/config.py`](optimizer/config.py):
 
 ```python
 NUM_CUSTOMERS = 45          # customers to serve
@@ -120,10 +141,10 @@ RANDOM_SEED   = 42          # None for a different scenario each run
 
 ### Solving a scenario from code
 
-`python -m optimizer.main` is a program: it regenerates the data, solves, writes
-`vrp_visualization.html`, colours its output and reconfigures the standard
-streams. None of that belongs in a web service. To call the solver from code,
-`optimizer/scenario.py` exposes the same computation as a function:
+`cvrptw-solve` is a program: it regenerates the data, solves, writes a file and
+prints a summary. To call the solver from code instead, `optimizer/scenario.py`
+exposes the same computation as a function — and it is the function the command
+line itself calls, so there is one code path, not two:
 
 ```python
 from pathlib import Path
@@ -172,15 +193,6 @@ Five things to know before putting this behind an HTTP route:
 - **`workdir` is supplied by the caller.** The six data files are written there
   and read back; nothing depends on the process working directory.
 
-### Regenerating the demo video
-
-```bash
-pip install playwright && playwright install chromium
-python tools/capture_demo.py --frames 180 --fps 24
-```
-
-The script drives the time slider frame by frame in a headless browser, then assembles the result with ffmpeg. Capture is therefore **deterministic**, instead of depending on animation cadence and machine load.
-
 ## Tests
 
 ```bash
@@ -189,14 +201,21 @@ pytest -m "not slow"    # fast loop, about 20 s
 ```
 
 ```
-77 passed in 53.27s
+547 passed, 37 skipped in 117s
 ```
 
-The tests cover the load-imbalance indicator, the OR-Tools compatibility layer, the tour document contract and the scenario API end to end.
+Most of them assert **properties of the solution**, not frozen numbers: that no
+vehicle ever exceeds its capacity, that a reload restores a full load, that
+arrival times respect their windows, that a parcel handed over is collected by a
+*different* courier and afterwards delivered to somebody. A solver returning
+routes that violate the model fails the suite — which was not true before: the
+earlier tests checked document shape and pinned figures, and would have passed a
+physically impossible answer.
 
-Two of them are worth pointing out:
+Three of them are worth pointing out:
 
 - an **upstream regression sentinel**: it asserts that `SetAllowedVehiclesForIndex` is still broken on the OR-Tools side, and will fail the day the fix ships, signalling that our workaround can be removed;
+- a **model-property suite** (`tests/integration/test_model_properties.py`): every property above, replayed across a matrix of seeds, hub counts, a tight-capacity case and a case where tardiness is unavoidable, so the tardiness assertion is checked against a non-zero value rather than a comfortable zero;
 - a **non-regression test on the showcase scenario** (marked `slow`): it replays the reference scenario, 45 customers and 3 vehicles on seed 42, and checks that it lands on the same indicators. It spends its full 30 second budget. The search being time-bounded, those values depend on machine speed: a deviation is not necessarily a regression, and the failure message says so.
 
 ## Architecture
@@ -206,34 +225,36 @@ optimizer/
 ├── config.py           # Scenario and solver parameters
 ├── create_toy_data.py  # Dataset generation (seed-reproducible)
 ├── data_loader.py      # Loading and shaping
-├── preprocessor.py     # Baseline distance computation
-├── solver.py           # OR-Tools model: dimensions, constraints, hubs
+├── solver.py           # OR-Tools model: dimensions, constraints, hand-overs
 ├── postprocessor.py    # Route extraction and indicator computation
 ├── trace.py            # Reading a solution: waits, loads, JSON
 ├── scenario.py         # API: a scenario in, a tour document out
 ├── tour_format.py      # Contract of the document served to a web consumer
-├── print_solution.py   # Animated map rendering (folium / Leaflet)
 ├── road_routing.py     # Real road-network itineraries (OSRM)
-├── stats.py            # Comparative analysis
-└── visualization/      # HTML, CSS and JavaScript template for the animation
+├── verify.py           # Independent correctness check of a tour
+├── audit.py            # Geometric quality: crossings, residual 2-opt, map
+└── main.py             # Command line
 
-tools/capture_demo.py   # Demo capture to frames and video
+web/                    # The React interface, shared with the portfolio site
+experiments/            # Penalty calibration campaign
+explorations/           # Earlier models kept as a research trail
 tests/unit/             # Unit tests
-tests/integration/      # End-to-end tests of the scenario API
+tests/integration/      # Model properties and the scenario API
 features-inventory.md   # Inventory of the features and their tests
 ```
 
-`trace.py` and `tour_format.py` exist for a precise reason: without them the
-animated map and the API would each carry a copy of the same computation, and
-the two would eventually drift. The Leaflet rendering now imports the same
-functions the server does, and the only dependency on folium or matplotlib is
-left in `print_solution.py`.
+There is exactly **one** rendering of a solution, in `web/`, and exactly one
+document format between the solver and it. Both used to be duplicated: a folium
+map generated in Python sat alongside the React page, each with its own
+interpolation code — and the map still carried a latitude-projection bug that had
+already been fixed on the Python side. A second implementation does not stay in
+agreement with the first; it drifts, quietly.
 
 ## Notable technical choices
 
 **Routes follow streets, not straight lines.** Connecting customers as the crow flies produces paths through buildings and across the Seine. Each segment is therefore replaced by its real road itinerary, obtained from OSRM. OSRM was chosen over OpenRouteService or GraphHopper for one specific reason: **no API key**, therefore no secret to store in a public repository. One request per route rather than per segment (thanks to `steps=true`), a disk cache, and a silent fallback to straight lines when the network is unavailable — the project stays runnable offline.
 
-**The distance→time factor is physically calibrated.** Distances are Euclidean, expressed in degrees. Converting them to seconds assumes ~85 km per degree at the latitude of Paris and an average speed of 20 km/h in urban traffic, i.e. ~15,000 s per degree. Cross-checked against OSRM: 750 s predicted versus 801 s measured on a 4.7 km crossing.
+**The distance metric is corrected for latitude.** Distances are Euclidean in degrees, but a degree of longitude is only ~73 km in Paris against ~111 km for a degree of latitude. Treating them as equal overstates east-west travel by half, and the solver then avoids east-west legs it should take. The longitude difference is therefore scaled by cos(latitude) — a correction the point *generator* already applied and the metric did not. One degree then means 111 km everywhere, and at 20 km/h in urban traffic that is ~20,000 s per degree.
 
 **A documented workaround for an upstream regression.** Since OR-Tools 9.15, `SetAllowedVehiclesForIndex` is unusable from Python — the C++ signature moved to `absl::Span<const int>` without a SWIG typemap ([or-tools#4982](https://github.com/google/or-tools/issues/4982)). The workaround constrains the node's vehicle variable directly, preserving the `-1` sentinel without which the disjunctions would stop working.
 
@@ -243,8 +264,59 @@ This is an operations-research prototype, and some simplifications are deliberat
 
 - **The solver's distances are Euclidean**, not road distances. OSRM itineraries feed the display and the animation, not the cost matrix — so the solver optimises over a straight-line approximation. This is the highest-value improvement to make next.
 - **The imbalance indicator** is based on residual load at the end of a route, which is an imperfect proxy for real workload. Customers served or time per vehicle would be better.
-- **Reported computation time is hard-coded to zero**: it is not instrumented yet.
+- **A hand-over moves an anonymous unit of capacity, not an identified parcel.** The model guarantees that what is put down is picked up by another courier and that the collector then serves someone, but not that *this particular* parcel reaches *that particular* customer. A faithful hand-over needs parcel identity — a transshipment formulation, which is a materially harder problem.
+- **The reported computation time in `get_results` is hard-coded to zero.** The scenario API reports the real figure as `meta.solveSeconds`; the console report does not.
 - **The data is synthetic**, generated around Paris. The input format (`colis.json`, `livreurs.json`, `hubs.json`) accepts real data without code changes.
+
+## What a systematic review found
+
+This project was written early, then reviewed line by line much later. The
+defects below were all found by reading the code against what it claimed, or by
+checking a solution instead of trusting the report attached to it. They are
+listed because the way each one hid is more interesting than the fix.
+
+**An objective that was never applied.** `get_distance` returned `int(distance)`
+on a matrix expressed in degrees. Over a city, no arc reaches 1, so all 420
+entries truncated to zero: the arc-cost evaluator scored nothing, and the
+`vehicle_max_distance` cap could never bind. The comment above it announced that
+distance was being optimised. Counter-intuitively, fixing it did not shorten
+routes — travel time is proportional to distance, so distance was already being
+minimised *indirectly* through the time dimension. The bug was real; its effect
+was masked.
+
+**A hand-over that could not be declined.** The deposit and collection nodes
+carried no disjunction, so they were mandatory: `hubs > 0` did not *permit* an
+exchange, it *imposed* one at every hub regardless of cost. A two-pass solve
+existed to work around this, arbitrating between "a forced transfer everywhere"
+and "none at all" — a false dilemma created by the missing disjunction.
+
+**Two inverted signs, and parcels that vanished.** Depositing a parcel credited a
+courier with a delivery it had not made, while collecting one debited the courier
+doing the favour. The exchange became a gift of capacity, and the collector paid
+nothing if its route ended straight after. Routes of the form *depot → collect →
+collect → depot* appeared on four seeds out of five: a courier that served nobody
+and made the parcels disappear.
+
+**A published timeline that contradicted the solve.** The solver constrained
+60 seconds of service per unit; a line in the data setup overwrote the value with
+5, and the tour document was built from the overwritten one. Couriers left each
+stop 55 seconds per unit too early, the difference absorbed silently into travel
+time. The function computing service time carries a comment warning against
+exactly this divergence — the formula was never duplicated, the *constant* was.
+
+**Indicators that flattered the result.** `hubsActivated` counted a courier
+*driving past* a hub as a completed exchange. The published load was recomputed
+by hand with sign rules that contradicted the solver, then clamped into range —
+which hid the disagreement rather than surfacing it. Both now read from the
+solver's own dimensions.
+
+Two tools came out of this and are part of the repository:
+[`cvrptw-verify`](optimizer/verify.py) recomputes every published quantity from
+the coordinates and timestamps and refuses to trust the report, and
+[`cvrptw-audit`](optimizer/audit.py) asks the harder question — whether a valid
+solution also looks *sensible*: a route that crosses itself is provably
+improvable, and counting the 2-opt moves still available measures how far the
+search actually converged.
 
 ## Provenance
 
