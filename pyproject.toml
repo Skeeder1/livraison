@@ -23,18 +23,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Tout ce que `cvrptw-solve` utilise en plus du noyau : la sortie console
-# colorée, la carte interactive et les graphiques du rapport.
-cli = [
-    "colorama>=0.4",
-    "folium>=0.15",
-    "matplotlib>=3.7",
-]
-# `optimizer.stats` seul : agrégation de campagnes de mesure en tableau et
-# graphiques comparatifs.
-analysis = [
-    "pandas>=2.0",
-    "seaborn>=0.12",
+# Tracés des courbes de réponse de la campagne de calibration. Le rapport texte
+# de `experiments.analyse` se passe de cette dépendance ; seuls les graphiques
+# la réclament.
+experiments = [
     "matplotlib>=3.7",
 ]
 dev = [
@@ -65,7 +57,3 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["optimizer"]
-include-package-data = true
-
-[tool.setuptools.package-data]
-optimizer = ["visualization/*.html", "visualization/*.js", "visualization/*.css"]
