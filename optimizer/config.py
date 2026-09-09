@@ -137,7 +137,15 @@ class Config:
 
     # Time window behavior
     TIME_WINDOWS_OPTIONAL = True  # If True, time windows are optional with penalties
-    TIME_WINDOW_VIOLATION_PENALTY = 50000  # Penalty per second of violation (only if optional)
+    # SANS EFFET, conservée pour mémoire et pour la campagne de calibration.
+    #
+    # Elle était appliquée par `SetSlackCostCoefficientForVehicle`, qui pénalise
+    # l'attente et non le retard, puis écrasée quelques lignes plus bas par
+    # `WAITING_PENALTY`. Vérifié : de 0 à 10 000 000, les tournées sont
+    # identiques au nœud près. Voir `setup_time_constraints`.
+    #
+    # De vraies fenêtres souples demanderaient `SetCumulVarSoftUpperBound`.
+    TIME_WINDOW_VIOLATION_PENALTY = 50000
 
     # Vehicle shifts (en secondes)
     START_TIME_MIN = 0

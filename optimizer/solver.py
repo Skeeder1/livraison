@@ -471,18 +471,36 @@ def setup_time_constraints(routing, manager, data, time_dimension, num_real_vehi
             time_dimension.CumulVar(index).SetRange(int(window[0]), int(window[1]))
             routing.AddToAssignment(time_dimension.SlackVar(index))
         else:
-            # Customers: optional time windows with penalties
+            # Clients : la fenêtre n'est PAS transmise au modèle.
+            #
+            # Le cumul reçoit une plage grande ouverte, et le retard éventuel est
+            # calculé après coup pour être rapporté. Il n'est donc pas optimisé.
+            #
+            # Ce bloc posait auparavant un coefficient de coût sur le mou, censé
+            # pénaliser les violations de fenêtre. Deux raisons pour lesquelles
+            # cela ne fonctionnait pas :
+            #
+            #   1. `SetSlackCostCoefficientForVehicle` coûte
+            #      `coefficient x (fin - départ - transit)`, c'est-à-dire le temps
+            #      d'ATTENTE cumulé de la tournée. Attendre et arriver en retard
+            #      sont deux choses différentes ; le mou ne mesure pas le retard.
+            #   2. La valeur était de toute façon écrasée quelques lignes plus
+            #      bas par `Config.WAITING_PENALTY`, appliquée aux mêmes
+            #      véhicules. Vérifié : entre 0 et 10 000 000, les tournées sont
+            #      identiques au nœud près.
+            #
+            # `Config.TIME_WINDOW_VIOLATION_PENALTY` était donc un paramètre
+            # mort — ce que la campagne de calibration n'a pas vu, puisqu'elle
+            # lui a trouvé un « effet détecté » à p = 0,019. Huit facteurs testés
+            # au seuil de 5 % donnent environ une chance sur trois d'obtenir au
+            # moins un faux positif : c'en était un.
+            #
+            # Pour de vraies fenêtres souples, il faudrait
+            # `SetCumulVarSoftUpperBound(index, fin_de_fenêtre, pénalité)`, qui
+            # coûte proportionnellement au dépassement. Non implémenté.
             if Config.TIME_WINDOWS_OPTIONAL:
-                # Allow wide range instead of hard constraints
                 time_dimension.CumulVar(index).SetRange(0, int(data['vehicle_max_time']))
-                slack_var = time_dimension.SlackVar(index)
-                routing.AddToAssignment(slack_var)
-                # Apply penalty coefficient for time window violations (slack penalty)
-                # Using vehicle-based penalty since node-based isn't available
-                for vehicle_id in range(data['num_vehicles']):
-                    time_dimension.SetSlackCostCoefficientForVehicle(
-                        int(Config.TIME_WINDOW_VIOLATION_PENALTY), vehicle_id
-                    )
+                routing.AddToAssignment(time_dimension.SlackVar(index))
             else:
                 # Original behavior: hard constraints for all
                 time_dimension.CumulVar(index).SetRange(int(window[0]), int(window[1]))
