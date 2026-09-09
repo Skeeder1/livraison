@@ -51,6 +51,12 @@ class Config:
     # et le solveur se met à préférer laisser deux clients de côté.
     DROP_CUSTOMER_PENALTY_METERS = 1_000_000
 
+    # Coût d'abandon d'un transfert entre coursiers, en mètres (même unité que
+    # le coût d'arc). À 0, un rendez-vous doit se justifier uniquement par la
+    # distance qu'il économise : le solveur ne le retient que s'il est rentable.
+    # Valeur à calibrer expérimentalement, cf. `experiments/`.
+    TRANSFER_PENALTY_METERS = 0
+
     DISTANCE_TO_TIME_FACTOR = 20000.0
     SERVICE_TIME_PER_UNIT = 60  # 60 seconds per demand unit for service time
 

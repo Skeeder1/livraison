@@ -44,7 +44,7 @@ class TestCreateBaseNodeMapping:
         """
         # ── ARRANGE ────────────────────────────────────────────────
         # 3 clients et 2 hubs : nœuds 0 (dépôt), 1-3 (clients), 4-5 (hubs),
-        # puis 6-15 (rechargements), 16-19 (dépôts et retraits), 20-21 (fictifs).
+        # puis 6-7 (rechargements) et 8-11 (dépôts et retraits).
         data = {
             'depot': 0,
             'num_customers': 3,
@@ -53,7 +53,6 @@ class TestCreateBaseNodeMapping:
             'unload_depots': [6, 7],
             'hub_deposits': [8, 10],
             'hub_pickups': [9, 11],
-            'dummy_nodes': [12, 13],
         }
         hub_indices = range(4, 6)
 
@@ -66,7 +65,6 @@ class TestCreateBaseNodeMapping:
             0, 0,               # rechargements, au dépôt
             4, 4,               # dépôt et retrait du hub 4
             5, 5,               # dépôt et retrait du hub 5
-            0, 0,               # nœuds fictifs, au dépôt
         ]
 
     def test_reste_aligne_sur_la_numerotation_reelle(self):
@@ -87,7 +85,7 @@ class TestCreateBaseNodeMapping:
                 f"le retrait {pickup} du hub {hub} pointe vers {base_node[pickup]}"
             )
 
-    def test_les_rechargements_et_les_fictifs_pointent_vers_le_depot(self):
+    def test_les_rechargements_pointent_vers_le_depot(self):
         # ── ARRANGE ────────────────────────────────────────────────
         data = _donnees_minimales(num_customers=3, num_hubs=1)
         _, _, _, hub_indices, _ = setup_data_extensions(data)
@@ -96,7 +94,7 @@ class TestCreateBaseNodeMapping:
         base_node = create_base_node_mapping(data, hub_indices)
 
         # ── ASSERT ─────────────────────────────────────────────────
-        for node in data['unload_depots'] + data['dummy_nodes']:
+        for node in data['unload_depots']:
             assert base_node[node] == data['depot']
 
     def test_la_table_couvre_exactement_les_noeuds_du_modele(self):

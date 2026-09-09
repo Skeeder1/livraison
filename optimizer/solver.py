@@ -115,26 +115,12 @@ def setup_data_extensions(data):
         data['hub_pickups'].append(pickup)
         current_num += 2
 
-    # Add dummy nodes and dummy vehicles for each hub
-    data['dummy_nodes'] = []
     num_real_vehicles = data['num_vehicles']
-
-    for _ in range(data['num_hubs']):
-        dummy = current_num
-        data['locations'].append(data['locations'][data['depot']])
-        data['demands'].append(0)
-        data['time_windows'].append((0, data['vehicle_max_time']))
-        data['dummy_nodes'].append(dummy)
-        current_num += 1
 
     data['num_locations'] = len(data['locations'])
     data['num_real_vehicles'] = num_real_vehicles  # Store for later use in metrics
-    data['num_vehicles'] = num_real_vehicles + data['num_hubs']
 
-    # Extend vehicle capacities and max times for dummy vehicles
-    vehicle_capacities += [0] * data['num_hubs']
     vehicle_max_times = [data['end_times'][v] - data['start_times'][v] for v in range(num_real_vehicles)]
-    vehicle_max_times += [data['vehicle_max_time']] * data['num_hubs']
 
     return vehicle_capacities, vehicle_max_times, reload_group, hub_indices, num_real_vehicles
 
@@ -163,9 +149,6 @@ def create_base_node_mapping(data, hub_indices):
     for deposit, pickup, hub in zip(data['hub_deposits'], data['hub_pickups'], hub_indices):
         base_node.append(hub)  # dépôt
         base_node.append(hub)  # retrait
-
-    for d in data['dummy_nodes']:
-        base_node.append(data['depot'])
 
     return base_node
 
@@ -336,15 +319,15 @@ def configure_constraints_and_penalties(routing, manager, data, capacity_dimensi
         node_index = manager.NodeToIndex(node)
         routing.AddDisjunction([node_index], 500)
 
-    # Hub deposits and pickups
+    # Dépôts et retraits de hub. La disjonction est ce qui rend le rendez-vous
+    # *optionnel* : sans elle les deux nœuds sont obligatoires, et `hubs > 0`
+    # n'autorise pas un échange, il en impose un à chaque hub — quel qu'en soit
+    # le coût. `add_hub_constraints` lie ensuite les deux activations, pour que
+    # ce soit les deux ou aucun.
     for node in data['hub_deposits'] + data['hub_pickups']:
         node_index = manager.NodeToIndex(node)
         capacity_dimension.SlackVar(node_index).SetValue(0)
-
-    # Dummy nodes
-    for node in data['dummy_nodes']:
-        node_index = manager.NodeToIndex(node)
-        routing.AddDisjunction([node_index], Config.DROP_CUSTOMER_PENALTY_METERS)
+        routing.AddDisjunction([node_index], Config.TRANSFER_PENALTY_METERS)
 
 
 def setup_time_constraints(routing, manager, data, time_dimension, num_real_vehicles):
@@ -411,15 +394,6 @@ def setup_time_constraints(routing, manager, data, time_dimension, num_real_vehi
         end_index = routing.End(vehicle_id)
         time_dimension.CumulVar(end_index).SetMax(int(data['end_times'][vehicle_id]))
 
-    # For dummy vehicles
-    for i in range(data['num_hubs']):
-        vehicle_id = num_real_vehicles + i
-        index = routing.Start(vehicle_id)
-        time_dimension.CumulVar(index).SetRange(0, data['vehicle_max_time'])
-        routing.AddToAssignment(time_dimension.SlackVar(index))
-        end_index = routing.End(vehicle_id)
-        time_dimension.CumulVar(end_index).SetValue(data['vehicle_max_time'])
-
 
 def set_allowed_vehicles(routing, vehicles, index):
     """
@@ -463,12 +437,7 @@ def setup_vehicle_restrictions(routing, manager, data, num_real_vehicles):
     real_vehicles = list(range(num_real_vehicles))
     for node in range(data['num_locations']):
         node_index = manager.NodeToIndex(node)
-        if node in data['dummy_nodes']:
-            dummy_i = data['dummy_nodes'].index(node)
-            dummy_v = num_real_vehicles + dummy_i
-            set_allowed_vehicles(routing, [dummy_v], node_index)
-        else:
-            set_allowed_vehicles(routing, real_vehicles, node_index)
+        set_allowed_vehicles(routing, real_vehicles, node_index)
 
 
 def add_hub_constraints(routing, manager, data, time_dimension, capacity_dimension):
@@ -484,27 +453,25 @@ def add_hub_constraints(routing, manager, data, time_dimension, capacity_dimensi
     for i in range(data['num_hubs']):
         deposit = data['hub_deposits'][i]
         pickup = data['hub_pickups'][i]
-        dummy = data['dummy_nodes'][i]
         deposit_index = manager.NodeToIndex(deposit)
         pickup_index = manager.NodeToIndex(pickup)
-        dummy_index = manager.NodeToIndex(dummy)
 
         # Time constraint
         routing.solver().Add(time_dimension.CumulVar(deposit_index) <= time_dimension.CumulVar(pickup_index))
 
-        # Different vehicles
-        routing.solver().Add(routing.VehicleVar(deposit_index) != routing.VehicleVar(pickup_index))
+        # Les deux nœuds vivent ou meurent ensemble : un colis déposé doit être
+        # collecté, et un colis collecté doit avoir été déposé.
+        routing.solver().Add(routing.ActiveVar(deposit_index) == routing.ActiveVar(pickup_index))
 
-        # Capacity constraint
-        routing.solver().Add(
-            capacity_dimension.CumulVar(deposit_index) + data['demands'][deposit] ==
-            capacity_dimension.CumulVar(pickup_index) - data['demands'][pickup]
+        # Deux coursiers distincts — mais seulement si le rendez-vous a lieu.
+        # Écrire `VehicleVar(dépôt) != VehicleVar(retrait)` sans condition rendait
+        # l'abandon infaisable : les deux variables valent -1 quand les nœuds sont
+        # inactifs, et -1 != -1 est faux. La forme réifiée n'impose la différence
+        # que lorsque la paire est active.
+        vehicles_differ = routing.solver().IsDifferentVar(
+            routing.VehicleVar(deposit_index), routing.VehicleVar(pickup_index)
         )
-
-        # Dummy constraints
-        dummy_time = time_dimension.CumulVar(dummy_index)
-        routing.solver().Add(time_dimension.CumulVar(deposit_index) <= dummy_time)
-        routing.solver().Add(dummy_time <= time_dimension.CumulVar(pickup_index))
+        routing.solver().Add(vehicles_differ >= routing.ActiveVar(deposit_index))
 
 
 def configure_search_parameters(data):
@@ -598,83 +565,6 @@ def solve_vrp(data):
     solution = routing.SolveWithParameters(search_parameters)
 
     return manager, routing, solution
-
-
-def solve_vrp_with_optimal_hubs(data):
-    """
-    Résout le VRP deux fois (avec et sans hubs) et retourne la meilleure solution
-    basée sur le temps total de livraison (somme des temps de tous les véhicules).
-
-    :param data: Dictionnaire de données du problème
-    :return: Tuple (manager, routing, solution, results, hubs_used, data_used)
-             - hubs_used: True si la solution avec hubs a été choisie, False sinon
-             - data_used: le dictionnaire de données correspondant EXACTEMENT à la
-               solution retenue.
-
-    Pourquoi `data_used` est renvoyé : `solve_vrp` mute son entrée
-    (`setup_data_extensions` ajoute les nœuds de dépôt/retrait des hubs, les
-    nœuds fictifs, et porte `num_vehicles` à `num_réels + num_hubs`). Les deux
-    résolutions travaillent donc sur deux états de données différents. Sans ce
-    retour, l'appelant devait reconstruire l'état à la main — reconstruction
-    incomplète qui laissait `num_vehicles` gonflé et faisait planter la
-    visualisation avec un IndexError sur les routes.
-    """
-    from optimizer.postprocessor import get_results
-
-    print("\n🔍 Comparaison avec/sans hubs pour optimiser le temps total de livraison...")
-
-    # ===== SOLUTION SANS HUBS =====
-    print("\n📊 Résolution SANS hubs...")
-    # `strip_hubs` retire réellement les nœuds de hub. La version précédente se
-    # contentait de mettre `num_hubs` à 0 sur une copie profonde, ce qui laissait
-    # les hubs dans le modèle en passages obligatoires : la branche « sans hubs »
-    # traversait les hubs. Voir `strip_hubs`.
-    data_no_hubs = strip_hubs(data)
-
-    manager_no_hubs, routing_no_hubs, solution_no_hubs = solve_vrp(data_no_hubs)
-
-    if solution_no_hubs is None:
-        print("❌ Aucune solution trouvée sans hubs")
-        total_time_no_hubs = float('inf')
-        results_no_hubs = None
-    else:
-        results_no_hubs = get_results(data_no_hubs, manager_no_hubs, routing_no_hubs, solution_no_hubs)
-        total_time_no_hubs = results_no_hubs['indicators']['total_time_all_vehicles']
-        print(f"✅ Solution sans hubs trouvée - Temps total: {format_time_display(total_time_no_hubs)}")
-
-    # ===== SOLUTION AVEC HUBS =====
-    print("\n📊 Résolution AVEC hubs...")
-    manager_with_hubs, routing_with_hubs, solution_with_hubs = solve_vrp(data)
-
-    if solution_with_hubs is None:
-        print("❌ Aucune solution trouvée avec hubs")
-        total_time_with_hubs = float('inf')
-        results_with_hubs = None
-    else:
-        results_with_hubs = get_results(data, manager_with_hubs, routing_with_hubs, solution_with_hubs)
-        total_time_with_hubs = results_with_hubs['indicators']['total_time_all_vehicles']
-        print(f"✅ Solution avec hubs trouvée - Temps total: {format_time_display(total_time_with_hubs)}")
-
-    # ===== COMPARAISON ET CHOIX =====
-    print("\n" + "="*80)
-    print("🎯 COMPARAISON DES SOLUTIONS")
-    print("="*80)
-    print(f"   Sans hubs : {format_time_display(total_time_no_hubs)}")
-    print(f"   Avec hubs : {format_time_display(total_time_with_hubs)}")
-
-    if total_time_with_hubs < total_time_no_hubs:
-        time_saved = total_time_no_hubs - total_time_with_hubs
-        print(f"\n   ✅ Solution AVEC hubs retenue (gain : {format_time_display(time_saved)})")
-        print("="*80 + "\n")
-        return manager_with_hubs, routing_with_hubs, solution_with_hubs, results_with_hubs, True, data
-    else:
-        time_lost = total_time_with_hubs - total_time_no_hubs
-        if time_lost > 0:
-            print(f"\n   ✅ Solution SANS hubs retenue (les hubs ajoutent {format_time_display(time_lost)})")
-        else:
-            print(f"\n   ✅ Solution SANS hubs retenue (temps équivalent)")
-        print("="*80 + "\n")
-        return manager_no_hubs, routing_no_hubs, solution_no_hubs, results_no_hubs, False, data_no_hubs
 
 
 def format_time_display(seconds):
