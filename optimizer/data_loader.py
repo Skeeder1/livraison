@@ -39,6 +39,11 @@ def load_data(data_dir: str) -> dict[str, Any]:
         'hubs': hubs,
         'weights': {entry['criterion']: entry['weight'] for entry in weights},
         'distance_matrix': np.load(f"{data_dir}/distance_matrix.npy"),
+        # Facultative : seul le mode routier la produit. Son absence fait
+        # retomber le solveur sur `distance x DISTANCE_TO_TIME_FACTOR`.
+        **({'time_matrix': np.load(f"{data_dir}/time_matrix.npy"),
+            'distance_scale': 1.0}
+           if os.path.exists(f"{data_dir}/time_matrix.npy") else {}),
         'depot': 0,  # Assuming depot is always node 1
     }
 

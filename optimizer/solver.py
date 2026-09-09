@@ -188,22 +188,32 @@ def create_evaluator_functions(data, base_node, reload_group):
     :param reload_group: Groupe de rechargement
     :return: Fonctions d'évaluation distance, demande et temps
     """
+    # Échelle de conversion de la matrice vers le mètre. Vaut 1 quand la matrice
+    # vient du réseau routier — elle est déjà en mètres — et
+    # `DISTANCE_TO_METERS_FACTOR` quand elle est exprimée en degrés.
+    echelle_distance = data.get('distance_scale', Config.DISTANCE_TO_METERS_FACTOR)
+
+    # Durées de trajet réelles, s'il y en a. Sur un réseau routier, le temps
+    # n'est PAS proportionnel à la distance : un boulevard et une ruelle de même
+    # longueur ne se parcourent pas au même rythme. Il faut donc une matrice de
+    # durées propre, et non une distance multipliée par une vitesse moyenne.
+    matrice_temps = data.get('time_matrix')
+
     def get_distance(from_node, to_node):
-        # Converti en mètres AVANT la troncature entière. Les distances sont en
-        # degrés, et sur une zone urbaine de ±0,055° elles valent toutes moins
-        # de 1 : `int()` les ramenait donc toutes à 0, si bien que la dimension
-        # Distance et son coefficient d'étendue ne pesaient rien. Le calcul du
-        # temps, lui, multipliait déjà avant d'arrondir, ce qui explique que
-        # seul le temps pilotait réellement la recherche.
+        # Converti en mètres AVANT la troncature entière. En degrés, sur une zone
+        # urbaine de ±0,055°, aucune valeur n'atteint 1 : `int()` les ramenait
+        # toutes à 0, si bien que la dimension Distance et son coefficient
+        # d'étendue ne pesaient rien.
         b_from = base_node[from_node]
         b_to = base_node[to_node]
         distance = data['distance_matrix'][b_from, b_to]
-        return int(distance * Config.DISTANCE_TO_METERS_FACTOR)
+        return int(distance * echelle_distance)
 
     def get_travel_time(from_node, to_node):
-        # Calcul dynamique : distance * facteur de conversion
         b_from = base_node[from_node]
         b_to = base_node[to_node]
+        if matrice_temps is not None:
+            return int(matrice_temps[b_from, b_to])
         distance = data['distance_matrix'][b_from, b_to]
         return int(distance * Config.DISTANCE_TO_TIME_FACTOR)
 

@@ -50,6 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="répertoire des données d'instance générées")
     parser.add_argument("--no-roads", action="store_true",
                         help="ne pas interroger OSRM ; tracés à vol d'oiseau")
+    parser.add_argument("--road-matrix", action="store_true", dest="road_matrix",
+                        help="optimiser sur les distances et durées du réseau routier "
+                             "plutôt qu'à vol d'oiseau (une requête OSRM, mise en cache)")
     return parser
 
 
@@ -84,7 +87,9 @@ def main() -> int:
     print(f"Résolution : {args.customers} clients, {args.vehicles} véhicules, "
           f"{args.hubs} hub(s), budget {args.budget_seconds} s…")
     try:
-        tour = solve_scenario(params, workdir=args.workdir, fetch_roads=not args.no_roads)
+        tour = solve_scenario(params, workdir=args.workdir,
+                              fetch_roads=not args.no_roads,
+                              road_matrix=args.road_matrix)
     except ScenarioParamsError as exc:
         print(f"Paramètres invalides : {exc}", file=sys.stderr)
         return 2

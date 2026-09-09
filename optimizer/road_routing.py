@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import tempfile
 import urllib.error
@@ -39,6 +40,10 @@ DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".c
 CACHE_DIR = DEFAULT_CACHE_DIR
 REQUEST_TIMEOUT = 30
 
+#: Vitesse retenue pour combler un couple qu'OSRM ne sait pas relier, en m/s.
+#: 20 km/h, l'ordre de grandeur d'un vélo cargo en ville.
+VITESSE_DE_REPLI_M_PAR_S = 20_000 / 3600
+
 
 def cache_dir():
     """
@@ -51,9 +56,14 @@ def cache_dir():
     return os.environ.get("OSRM_CACHE_DIR", DEFAULT_CACHE_DIR)
 
 
-def _cache_path(waypoints):
-    """Chemin de cache déterministe pour une suite de points de passage."""
-    key = json.dumps([[round(lat, 6), round(lon, 6)] for lat, lon in waypoints])
+def _cache_path(waypoints, prefix=""):
+    """Chemin de cache déterministe pour une suite de points de passage.
+
+    :param prefix: Distingue deux usages des mêmes points — la géométrie d'un
+        itinéraire et la matrice complète n'ont pas le même contenu, et sans lui
+        la seconde écraserait la première.
+    """
+    key = json.dumps([prefix] + [[round(lat, 6), round(lon, 6)] for lat, lon in waypoints])
     digest = hashlib.sha256(key.encode()).hexdigest()[:16]
     return os.path.join(cache_dir(), f"{digest}.json")
 
@@ -106,6 +116,16 @@ def _write_cache(cache_file, legs):
                 os.unlink(temporary)
             except OSError:
                 pass
+
+
+def _haversine_m(a, b):
+    """Distance géodésique en mètres entre deux couples (latitude, longitude)."""
+    rayon = 6371000.0
+    lat1, lat2 = math.radians(a[0]), math.radians(b[0])
+    dlat = lat2 - lat1
+    dlon = math.radians(b[1] - a[1])
+    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return 2 * rayon * math.asin(math.sqrt(h))
 
 
 def _straight_legs(waypoints):
@@ -170,6 +190,75 @@ def fetch_route_legs(waypoints):
     _write_cache(cache_file, legs)
 
     return legs
+
+
+class TableIndisponible(RuntimeError):
+    """OSRM n'a pas rendu de matrice — l'appelant décide quoi faire."""
+
+
+def fetch_table(locations):
+    """Matrice des distances et des durées ROUTIÈRES entre tous les points.
+
+    Renvoie ``(distances_m, durations_s)``, deux tableaux N×N.
+
+    Le solveur optimisait jusqu'ici des distances euclidiennes, pendant que la
+    carte affichait le vrai réseau : les tournées étaient donc optimales pour une
+    ville sans rues. Sur Paris, l'écart n'est pas cosmétique — un trajet mesuré
+    ici fait 7 228 m par la route contre 5 723 m à vol d'oiseau, soit un détour
+    de 26 %. La Seine, les sens uniques et les vitesses changent les décisions,
+    pas seulement le dessin.
+
+    Le service ``/table`` rend la matrice complète en **une seule requête**, et
+    non une par couple : 48 points, 2 304 valeurs, mesuré à 0,2 s. C'est ce qui
+    rend l'approche praticable sans serveur local.
+
+    :param locations: Coordonnées (latitude, longitude) indexées par nœud
+    :return: Deux tableaux N×N, mètres et secondes
+    :raises TableIndisponible: OSRM injoignable ou réponse inexploitable
+    """
+    import numpy as np
+
+    if len(locations) < 2:
+        raise TableIndisponible("il faut au moins deux points")
+
+    cache_file = _cache_path(locations, prefix="table")
+    cached = _read_cache(cache_file)
+    if cached is not None:
+        return np.array(cached["distances"]), np.array(cached["durations"])
+
+    coords = ";".join(f"{lon:.6f},{lat:.6f}" for lat, lon in locations)
+    url = f"{OSRM_BASE_URL}/table/v1/driving/{coords}?annotations=duration,distance"
+
+    try:
+        with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT) as response:
+            payload = json.load(response)
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+        raise TableIndisponible(f"OSRM injoignable : {exc}") from exc
+
+    if payload.get("code") != "Ok":
+        raise TableIndisponible(f"OSRM a répondu « {payload.get('code')} »")
+
+    distances = payload.get("distances")
+    durations = payload.get("durations")
+    if not distances or not durations:
+        raise TableIndisponible("réponse sans matrice")
+
+    # Un couple non raccordé au réseau vaut None. Le remplacer par le vol
+    # d'oiseau, et par une durée cohérente, plutôt que de rejeter toute la
+    # matrice pour un point mal placé — mais le signaler.
+    manquants = 0
+    for i in range(len(locations)):
+        for j in range(len(locations)):
+            if distances[i][j] is None or durations[i][j] is None:
+                manquants += 1
+                d = _haversine_m(locations[i], locations[j])
+                distances[i][j] = d
+                durations[i][j] = d / VITESSE_DE_REPLI_M_PAR_S
+    if manquants:
+        print(f"   ⚠️  {manquants} couple(s) non raccordé(s) au réseau, comblés à vol d'oiseau.")
+
+    _write_cache(cache_file, {"distances": distances, "durations": durations})
+    return np.array(distances), np.array(durations)
 
 
 def build_road_legs(locations, routes):

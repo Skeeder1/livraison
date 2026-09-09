@@ -144,6 +144,7 @@ def solve_scenario(
     *,
     workdir: Path,
     fetch_roads: bool = True,
+    road_matrix: bool = False,
 ) -> dict[str, Any]:
     """
     Génère un scénario, le résout **une fois**, et retourne la tournée mise en forme.
@@ -210,6 +211,12 @@ def solve_scenario(
         de données, puis relus. Fourni par l'appelant, et non déduit du
         répertoire courant : un serveur n'a aucune raison d'écrire à côté du code.
         Il est créé s'il n'existe pas, et n'est pas nettoyé.
+    :param road_matrix: Fait porter l'optimisation sur les distances et durées
+        du **réseau routier** plutôt que sur des distances à vol d'oiseau. Sans
+        lui, le solveur optimise une ville sans rues et l'on se contente de
+        dessiner le réseau par-dessus ; les tournées ne sont alors pas celles
+        qu'un coursier suivrait. Une seule requête OSRM par instance, mise en
+        cache. Retombe sur l'euclidien, en le signalant, si OSRM est injoignable.
     :param fetch_roads: Interroge OSRM pour tracer les tournées sur le réseau
         routier. Une requête HTTP par véhicule vers un serveur public, avec cache
         disque. À faux, les segments sont des droites : le document reste valide,
@@ -246,7 +253,7 @@ def solve_scenario(
             RANDOM_SEED=settings['seed'],
         )
 
-        create_toy_data(str(workdir), verbose=False)
+        create_toy_data(str(workdir), verbose=False, road_matrix=road_matrix)
         data = load_data(str(workdir))
 
         # Aucun retrait à faire ici : `hubs` pilote `Config.NUM_HUBS`, donc à 0

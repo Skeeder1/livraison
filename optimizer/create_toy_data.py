@@ -94,7 +94,8 @@ def compute_distance_matrix(locations: list[tuple[float, float]]) -> np.ndarray:
                 dist_matrix[i, j] = np.sqrt(d_lat ** 2 + d_lon ** 2)
     return dist_matrix
 
-def create_toy_data(data_dir: str | None = None, verbose: bool = True) -> None:
+def create_toy_data(data_dir: str | None = None, verbose: bool = True,
+                    road_matrix: bool = False) -> None:
     """
     Crée les données de test en utilisant la configuration actuelle.
 
@@ -103,6 +104,11 @@ def create_toy_data(data_dir: str | None = None, verbose: bool = True) -> None:
         répertoire de travail doit fournir un chemin absolu.
     :param verbose: Affiche le récapitulatif du scénario généré. Faux pour un
         appelant serveur, qui régénère les données à chaque requête.
+    :param road_matrix: Demande à OSRM les distances et durées du **réseau
+        routier** plutôt que des distances euclidiennes. Le solveur optimise
+        alors le trajet réel — la Seine, les sens uniques et les vitesses
+        entrent dans la décision, au lieu d'être seulement dessinés par-dessus.
+        Retombe sur l'euclidien, en le signalant, si OSRM est injoignable.
     """
     if data_dir is None:
         data_dir = os.path.join('optimizer', 'tests', 'toy_data')
@@ -121,6 +127,24 @@ def create_toy_data(data_dir: str | None = None, verbose: bool = True) -> None:
 
     # Compute matrices
     distance_matrix = compute_distance_matrix(locations)
+    time_matrix = None
+
+    if road_matrix:
+        from optimizer.road_routing import TableIndisponible, fetch_table
+        try:
+            distance_matrix, time_matrix = fetch_table(locations)
+            if verbose:
+                euclidienne = compute_distance_matrix(locations)
+                # Facteur de détour : de combien la route rallonge le vol
+                # d'oiseau. C'est la mesure de ce que l'euclidien ignorait.
+                ratio = distance_matrix.sum() / max(
+                    1.0, (euclidienne * Config.DISTANCE_TO_METERS_FACTOR).sum())
+                print(f"   Matrice routière OSRM : détour moyen x{ratio:.2f} "
+                      "sur le vol d'oiseau")
+        except TableIndisponible as exc:
+            print(f"   ⚠️  Matrice routière indisponible ({exc}) — "
+                  "repli sur les distances euclidiennes.")
+            road_matrix = False
     # Nouveau calcul du temps : distance * DISTANCE_TO_TIME_FACTOR
 
     # Toy colis
@@ -177,6 +201,12 @@ def create_toy_data(data_dir: str | None = None, verbose: bool = True) -> None:
 
     # Save matrices
     np.save(os.path.join(data_dir, 'distance_matrix.npy'), distance_matrix)
+    if time_matrix is not None:
+        # Présente uniquement en mode routier. Sa seule présence dit au solveur
+        # que les durées ne se déduisent pas de la distance : sur un réseau, un
+        # boulevard et une ruelle de même longueur ne se parcourent pas au même
+        # rythme.
+        np.save(os.path.join(data_dir, 'time_matrix.npy'), time_matrix)
 
     if verbose:
         print(f"Toy data created in {data_dir} with configuration:")
