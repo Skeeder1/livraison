@@ -327,55 +327,35 @@ def get_results(data: dict[str, Any], manager: pywrapcp.RoutingIndexManager, rou
         else:
             vehicle_capacity = 0  # Véhicule dummy, capacité = 0
 
-        # Parcourir toute la route du véhicule
-        # Calculer la charge en ordre décroissant: commence à capacity et diminue quand on livre
-        current_charge = vehicle_capacity  # Commence plein
+        # La charge est LUE dans la dimension de capacité du solveur, jamais
+        # recalculée. Elle l'était auparavant, avec des règles de signe écrites à
+        # la main, et les deux modèles divergeaient : aux nœuds de hub, le dépôt
+        # et le retrait portaient des signes opposés à ceux de la dimension. Un
+        # `max(0, min(...))` bornait ensuite le résultat, ce qui masquait
+        # précisément le désaccord au lieu de le révéler.
+        #
+        # `CumulVar` compte les unités de tournée consommées depuis le dernier
+        # rechargement ; ce que le coursier transporte en est le complément.
+        capacity_dimension = routing.GetDimensionOrDie('Capacity')
 
+        # `CumulVar` donne le cumul À L'ARRIVÉE au nœud ; la demande du nœud n'est
+        # ajoutée qu'en le quittant. La charge publiée décrit, elle, l'état APRÈS
+        # le passage — un point de rechargement doit s'y lire plein. On relève
+        # donc le cumul du nœud suivant.
+        cumuls = []
         while not routing.IsEnd(index):
-            node = manager.IndexToNode(index)  # Convertir l'index en numéro de nœud
-            route.append(node)
-            # Temps d'arrivée au nœud (dimension temporelle)
+            route.append(manager.IndexToNode(index))
             times.append(solution.Value(time_dimension.CumulVar(index)))
-
-            # Mettre à jour la charge basée sur la demande du nœud:
-            # - Les clients réduisent la charge (demand > 0)
-            # - Les hub pickups augmentent la charge (demand > 0)
-            # - Les hub deposits réduisent la charge (demand < 0)
-            # - Les unload depots font recharger complètement (demand < 0)
-            node_demand = data['demands'][node]
-
-            # Identify node type using the hub_deposits and hub_pickups lists
-            is_hub_deposit = node in data.get('hub_deposits', [])
-            is_hub_pickup = node in data.get('hub_pickups', [])
-            is_unload_depot = node in data.get('unload_depots', [])
-
-            if is_hub_pickup and node_demand > 0:
-                # At hub pickup: LOAD a package from transfer (increase charge)
-                current_charge += node_demand
-            elif node_demand > 0:
-                # At customer: DELIVER a package (decrease charge)
-                current_charge -= node_demand
-            elif is_hub_deposit and node_demand < 0:
-                # At hub deposit: UNLOAD a package for transfer (decrease charge)
-                current_charge -= abs(node_demand)
-            elif is_unload_depot and node_demand < 0:
-                # At unload depot: full recharge
-                current_charge = vehicle_capacity
-            elif node == 0:
-                # At main depot: no charge change
-                pass
-
-            # Enregistrer la charge APRÈS avoir traité le nœud
-            load_value = max(0, min(current_charge, vehicle_capacity))
-            loads.append(load_value)
-
-            index = solution.Value(routing.NextVar(index))  # Passer au nœud suivant
+            cumuls.append(solution.Value(capacity_dimension.CumulVar(index)))
+            index = solution.Value(routing.NextVar(index))
 
         # Ajouter le nœud final (retour au dépôt)
-        final_node = manager.IndexToNode(index)
-        route.append(final_node)
+        route.append(manager.IndexToNode(index))
         times.append(solution.Value(time_dimension.CumulVar(index)))
-        loads.append(max(0, min(current_charge, vehicle_capacity)))  # Charge au retour
+        cumuls.append(solution.Value(capacity_dimension.CumulVar(index)))
+
+        loads = [vehicle_capacity - c for c in cumuls[1:]]
+        loads.append(vehicle_capacity - cumuls[-1])
         
         # Calculer la capacité restante à chaque étape
         # Capacité restante = Capacité totale du véhicule - Charge cumulée transportée

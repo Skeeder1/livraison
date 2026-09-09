@@ -117,8 +117,24 @@ def setup_data_extensions(data):
         pickup = current_num + 1
         data['locations'].append(data['locations'][h])
         data['locations'].append(data['locations'][h])
-        data['demands'].append(-hub_capacity)
+        # La dimension de capacité compte ce qu'un véhicule a déjà distribué
+        # depuis son dernier plein ; ce qu'il lui reste à livrer en est le
+        # complément. Un colis qui QUITTE le véhicule au dépôt de transfert le
+        # consomme donc, exactement comme une livraison (+1) ; un colis
+        # RÉCUPÉRÉ au retrait rend de la capacité (-1).
+        #
+        # Les deux signes étaient inversés. Déposer un colis créditait le
+        # coursier d'une livraison qu'il n'avait pas faite, et le récupérer en
+        # débitait celui qui rendait pourtant service. Le rendez-vous devenait
+        # un cadeau de capacité : le déposant gagnait une unité, et le
+        # collecteur ne payait rien s'il rentrait au dépôt juste après — d'où
+        # les tournées observées du type « 0 → retrait → retrait → 0 », qui ne
+        # servaient aucun client et faisaient disparaître les colis.
+        #
+        # Dans le bon sens, le collecteur doit avoir libéré de la place avant de
+        # pouvoir recevoir : le cumul ne peut pas passer sous zéro.
         data['demands'].append(hub_capacity)
+        data['demands'].append(-hub_capacity)
         data['time_windows'].append(data['time_windows'][h])
         data['time_windows'].append(data['time_windows'][h])
         data['hub_deposits'].append(deposit)
@@ -298,7 +314,9 @@ def add_routing_dimensions(routing, manager, data, vehicle_capacities, vehicle_m
     # Minimize makespan and balance route times to prevent extreme time differences
     time_dimension.SetGlobalSpanCostCoefficient(Config.TIME_SPAN_COEFFICIENT)
 
-    return distance_dimension, capacity_dimension, time_dimension, distance_evaluator_index, time_evaluator_index
+    return (distance_dimension, capacity_dimension, time_dimension,
+            routing.GetDimensionOrDie(customer_count), distance_evaluator_index,
+            time_evaluator_index)
 
 
 def configure_constraints_and_penalties(routing, manager, data, capacity_dimension, hub_indices):
@@ -311,6 +329,13 @@ def configure_constraints_and_penalties(routing, manager, data, capacity_dimensi
     :param capacity_dimension: Dimension de capacité
     :param hub_indices: Indices des hubs
     """
+    # Le mou de capacité est nul au départ de chaque véhicule. Seuls les points
+    # de rechargement en ont besoin, pour absorber la remise à zéro sans passer
+    # sous la borne inférieure ; ailleurs il laisse le cumul dériver sans qu'aucun
+    # colis ne bouge, et rend la charge publiée indéterminée.
+    for vehicle_id in range(data['num_vehicles']):
+        capacity_dimension.SlackVar(routing.Start(vehicle_id)).SetValue(0)
+
     # Set slacks and disjunctions for customers
     customer_start = 1
     customer_end = 1 + data['num_customers']
@@ -319,15 +344,34 @@ def configure_constraints_and_penalties(routing, manager, data, capacity_dimensi
         capacity_dimension.SlackVar(node_index).SetValue(0)
         routing.AddDisjunction([node_index], Config.DROP_CUSTOMER_PENALTY_METERS)
 
-    # Unload depots
+    # Points de rechargement. Le mou y est indispensable : la demande vaut
+    # -capacité_max, et sans mou le cumul passerait sous zéro dès qu'un véhicule
+    # recharge sans être totalement plein.
+    #
+    # Laissé libre, il rendait toutefois le rechargement partiel : le solveur
+    # pouvait s'arrêter au dépôt et n'y reprendre que trois colis sur dix, sans
+    # que rien ne l'en empêche ni ne l'y pousse. On force donc le cumul à
+    # repartir de zéro — repasser au dépôt, c'est refaire le plein.
+    max_reset = max(data['vehicle_capacities'])
     for node in data['unload_depots']:
         node_index = manager.NodeToIndex(node)
         routing.AddDisjunction([node_index], 0)
+        routing.solver().Add(
+            capacity_dimension.SlackVar(node_index)
+            + capacity_dimension.CumulVar(node_index) == max_reset
+        )
 
-    # Hub nodes
+    # Nœuds de hub d'origine : de simples points de passage, sans demande.
     for node in hub_indices:
         node_index = manager.NodeToIndex(node)
         routing.AddDisjunction([node_index], 500)
+        # Le mou de la dimension de capacité doit être nul ici. Laissé libre, il
+        # permettait au solveur de gonfler le cumul en franchissant un hub dont
+        # la demande est pourtant nulle : la charge rapportée baissait d'une
+        # unité sans qu'aucun colis ne change de main. Cela ne lui donnait rien —
+        # un cumul plus élevé ne fait qu'avancer le rechargement suivant — mais
+        # rendait la charge publiée indéterminée à ces nœuds.
+        capacity_dimension.SlackVar(node_index).SetValue(0)
 
     # Dépôts et retraits de hub. La disjonction est ce qui rend le rendez-vous
     # *optionnel* : sans elle les deux nœuds sont obligatoires, et `hubs > 0`
@@ -450,7 +494,7 @@ def setup_vehicle_restrictions(routing, manager, data, num_real_vehicles):
         set_allowed_vehicles(routing, real_vehicles, node_index)
 
 
-def add_hub_constraints(routing, manager, data, time_dimension, capacity_dimension):
+def add_hub_constraints(routing, manager, data, time_dimension, capacity_dimension, count_dimension):
     """
     Ajoute les contraintes spécifiques aux hubs pour les transferts.
     
@@ -472,6 +516,25 @@ def add_hub_constraints(routing, manager, data, time_dimension, capacity_dimensi
         # Les deux nœuds vivent ou meurent ensemble : un colis déposé doit être
         # collecté, et un colis collecté doit avoir été déposé.
         routing.solver().Add(routing.ActiveVar(deposit_index) == routing.ActiveVar(pickup_index))
+
+        # Un colis récupéré doit être livré. Sans cette contrainte, un coursier
+        # peut passer prendre un colis puis rentrer directement au dépôt : le
+        # colis disparaît. La correction des signes de demande a retiré tout
+        # intérêt à le faire, mais ne l'interdisait pas — et on l'observait
+        # encore sur trois graines sur cinq.
+        #
+        # On l'exprime sur la dimension qui compte les clients servis : si le
+        # véhicule v dessert le retrait, son total de clients en fin de tournée
+        # doit dépasser d'au moins un celui atteint au moment du retrait. La
+        # forme est celle d'un « grand M » : la contrainte se relâche d'elle-même
+        # pour les véhicules qui ne desservent pas ce nœud.
+        grand_m = data['num_customers'] + 1
+        for vehicle_id in range(data['num_real_vehicles']):
+            dessert = routing.solver().IsEqualCstVar(routing.VehicleVar(pickup_index), vehicle_id)
+            routing.solver().Add(
+                count_dimension.CumulVar(routing.End(vehicle_id))
+                >= count_dimension.CumulVar(pickup_index) + 1 - grand_m + grand_m * dessert
+            )
 
         # Deux coursiers distincts — mais seulement si le rendez-vous a lieu.
         # Écrire `VehicleVar(dépôt) != VehicleVar(retrait)` sans condition rendait
@@ -543,7 +606,8 @@ def solve_vrp(data):
     )
     
     # 3. Ajouter les dimensions
-    distance_dimension, capacity_dimension, time_dimension, distance_evaluator_index, time_evaluator_index = add_routing_dimensions(
+    (distance_dimension, capacity_dimension, time_dimension, count_dimension,
+     distance_evaluator_index, time_evaluator_index) = add_routing_dimensions(
         routing, manager, data, vehicle_capacities, vehicle_max_times,
         create_distance_evaluator, create_demand_evaluator, create_time_evaluator
     )
@@ -558,7 +622,7 @@ def solve_vrp(data):
     setup_vehicle_restrictions(routing, manager, data, num_real_vehicles)
     
     # 7. Ajouter les contraintes de hubs
-    add_hub_constraints(routing, manager, data, time_dimension, capacity_dimension)
+    add_hub_constraints(routing, manager, data, time_dimension, capacity_dimension, count_dimension)
     
     # 8. Définir la fonction objective
     # Optimiser la DISTANCE avec pénalités pour équilibrer temps et charges

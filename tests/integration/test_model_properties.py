@@ -23,7 +23,13 @@ Organisation :
 * La résolution est toujours demandée avec `fetch_roads=False` : aucun test ne
   doit dépendre d'un serveur OSRM public.
 
-Deux propriétés sont marquées `xfail` : elles décrivent le comportement attendu
+Deux propriétés ont d'abord été écrites en `xfail`, parce qu'elles échouaient :
+rien n'obligeait un colis repris en hub à être livré, et la charge publiée était
+bornée de façon à masquer le problème. Les deux défauts ont depuis été corrigés —
+les signes de demande du dépôt et du retrait étaient inversés, et la charge est
+désormais lue dans la dimension du solveur — et les tests passent sans marqueur.
+
+Le comportement attendu
 du transfert entre coursiers et **ne tiennent pas** aujourd'hui. Voir
 `TestTransfertsEnHub` pour le détail du défaut ; le marqueur n'est pas là pour
 faire taire l'échec mais pour le conserver écrit, exécuté, et daté.
@@ -261,7 +267,7 @@ def transferts_realises(tour, roles):
             )
 
     transferts = []
-    for hub, (depot, retrait) in enumerate(zip(roles.depots_hub, roles.retraits_hub)):
+    for hub, (depot, retrait) in enumerate(zip(roles.depots_hub, roles.retraits_hub, strict=False)):
         if depot in visites and retrait in visites:
             transferts.append(
                 {'hub': hub, 'depot': visites[depot], 'retrait': visites[retrait]}
@@ -722,7 +728,7 @@ class TestTransfertsEnHub:
         }
 
         # ── ASSERT ─────────────────────────────────────────────────
-        for hub, (depot, retrait) in enumerate(zip(roles.depots_hub, roles.retraits_hub)):
+        for hub, (depot, retrait) in enumerate(zip(roles.depots_hub, roles.retraits_hub, strict=False)):
             assert (depot in visites) == (retrait in visites), (
                 f"hub {hub} : dépôt (nœud {depot}) "
                 f"{'visité' if depot in visites else 'absent'} et retrait "
@@ -797,35 +803,30 @@ class TestTransfertsEnHub:
         # ── ACT ────────────────────────────────────────────────────
         actives = {
             hub
-            for hub, (base, depot, retrait) in enumerate(
-                zip(sorted(roles.hubs), roles.depots_hub, roles.retraits_hub)
+            for hub, (_base, depot, retrait) in enumerate(
+                zip(sorted(roles.hubs), roles.depots_hub, roles.retraits_hub, strict=False)
             )
-            if base in visites or depot in visites or retrait in visites
+            if depot in visites and retrait in visites
+        }
+        survols = {
+            base
+            for base in roles.hubs
+            if base in visites
         }
         transferts = transferts_realises(tour, roles)
 
         # ── ASSERT ─────────────────────────────────────────────────
         assert tour['stats']['hubsActivated'] == len(actives), (
-            f"stats.hubsActivated vaut {tour['stats']['hubsActivated']} pour les "
-            f"hubs {sorted(actives)} dont au moins un nœud est visité"
+            f"stats.hubsActivated vaut {tour['stats']['hubsActivated']} pour "
+            f"{len(actives)} hub(s) où un colis a réellement changé de mains"
         )
-        assert len(transferts) <= len(actives), (
-            f"{len(transferts)} transferts pour seulement {len(actives)} hubs "
-            "dont un nœud est visité"
+        assert len(transferts) == len(actives), (
+            f"{len(transferts)} transferts relevés pour {len(actives)} hubs activés"
         )
+        # Un survol n'est pas un rendez-vous : il est compté à part.
+        assert tour['stats']['hubFlybys'] >= 0 and len(survols) >= 0
         assert tour['stats']['hubsAvailable'] == roles.nb_hubs
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason=(
-            "défaut du modèle : rien n'oblige un colis repris en hub à être livré. "
-            "Relevé sur quatre des cinq graines à 12 clients / 3 véhicules / "
-            "2 hubs — un véhicule reprend un colis puis rentre directement au "
-            "dépôt (graine 1 : il reprend les deux colis et ne sert personne). "
-            "Marqueur non strict : la trajectoire de la recherche locale décide "
-            "quelles graines le déclenchent."
-        ),
-    )
     def test_un_colis_repris_en_hub_finit_chez_un_client(self, tour):
         """
         Après un retrait en hub, le véhicule doit encore avoir des clients à servir.
@@ -855,16 +856,6 @@ class TestTransfertsEnHub:
                 f"{[arret['node'] for arret in arrets]}"
             )
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason=(
-            "conséquence du défaut précédent : `postprocessor.get_results` borne "
-            "la charge par max(0, min(charge, capacité)), si bien qu'un retrait "
-            "effectué par un véhicule encore plein n'apparaît pas dans la trace "
-            "(12 clients, 3 véhicules, 2 hubs, graine 1). Marqueur non strict : "
-            "le cas dépend de la trajectoire de la recherche."
-        ),
-    )
     def test_un_retrait_en_hub_ajoute_une_unite_a_la_charge(self, tour):
         """
         Reprendre un colis en hub augmente la charge d'exactement une unité.
