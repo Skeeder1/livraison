@@ -28,8 +28,14 @@ impression :
 
 * **Croisement entre tournées.** Contrairement au cas précédent, rien n'interdit à
   deux véhicules de se croiser dans une solution optimale : la capacité et les
-  fenêtres de temps peuvent l'imposer. C'est un indice de découpage discutable,
-  jamais une preuve.
+  fenêtres de temps peuvent l'imposer. Rocha et al. (2022) le mesurent d'ailleurs
+  sur les solutions de coût minimal des instances CVRP de référence, et la plupart
+  en comportent. C'est un indice de découpage discutable, jamais une preuve.
+
+  Le compte suit la définition de Matis (2008) : **les arêtes touchant le dépôt en
+  sont exclues**. Toutes les tournées partent du même point et y reviennent ; leurs
+  premiers et derniers segments se croisent mécaniquement, et les compter mesurerait
+  la topologie du dépôt plutôt que le partage du territoire.
 * **2-opt et relocalisation résiduels.** On énumère tous les mouvements et on
   compte ceux qui raccourcissent encore. Une recherche convergée n'en laisse
   presque aucun ; il en reste beaucoup lorsque le budget a manqué.
@@ -166,10 +172,22 @@ def auditer(tour: dict[str, Any]) -> dict[str, Any]:
     """Produit le rapport de qualité géométrique d'une tournée."""
     rapport: dict[str, Any] = {"vehicules": [], "global": {}}
     traces: list[list[Point]] = []
+    # Segments ne touchant pas le dépôt, par véhicule. Matis (2008) exclut
+    # explicitement du compte des croisements inter-tournées « les arêtes
+    # impliquant le nœud du dépôt » : toutes les tournées en partent et y
+    # reviennent, si bien que leurs premiers et derniers segments rayonnent d'un
+    # même point et se croisent mécaniquement. Les compter mesure la topologie du
+    # dépôt, pas le découpage du territoire.
+    segments_hors_depot: list[list[tuple[Point, Point]]] = []
 
     for v in tour["vehicles"]:
         pts: list[Point] = [(s["lat"], s["lng"]) for s in v["stops"]]
         traces.append(pts)
+        segments_hors_depot.append([
+            (pts[i], pts[i + 1])
+            for i in range(len(pts) - 1)
+            if v["stops"][i]["kind"] != "depot" and v["stops"][i + 1]["kind"] != "depot"
+        ])
         croisements = croisements_internes(pts)
         n_2opt, gain_2opt = deux_opt_restants(pts)
         n_reloc, gain_reloc = relocalisations_restantes(pts)
@@ -198,12 +216,11 @@ def auditer(tour: dict[str, Any]) -> dict[str, Any]:
     # temps et la capacité peuvent l'imposer — mais c'est ce que l'œil remarque
     # en premier sur la carte.
     entre = 0
-    for a in range(len(traces)):
-        for b in range(a + 1, len(traces)):
-            for i in range(len(traces[a]) - 1):
-                for j in range(len(traces[b]) - 1):
-                    if segments_se_croisent(traces[a][i], traces[a][i + 1],
-                                            traces[b][j], traces[b][j + 1]):
+    for a in range(len(segments_hors_depot)):
+        for b in range(a + 1, len(segments_hors_depot)):
+            for p1, p2 in segments_hors_depot[a]:
+                for p3, p4 in segments_hors_depot[b]:
+                    if segments_se_croisent(p1, p2, p3, p4):
                         entre += 1
     fins = [v["end"] for v in tour["vehicles"]]
     rapport["global"] = {

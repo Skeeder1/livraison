@@ -102,6 +102,47 @@ de référence. La plupart en comportent, strictement positifs.
 preuve de sous-optimalité. `optimizer/audit.py` le présente correctement comme un
 indice, et cette distinction vient de là.
 
+### Les quatre mesures que le champ retient
+
+Rossit et al. appliquent **14 mesures** d'attractivité visuelle à des instances VRPTW,
+puis conduisent une analyse de corrélation et **recommandent un sous-ensemble**. Rocha
+et al. reprennent exactement ces quatre-là — ce n'est donc pas un choix arbitraire de
+leur part, mais la recommandation des auteurs du panorama.
+
+| mesure | définition | coût | ce qu'elle attrape |
+|---|---|---|---|
+| `comp1` *(Matis 2008)* | `avgDist / avgMaxDist`, où `avgMaxDist` est la moyenne des **20 % plus longues** distances entre clients consécutifs | O(n log n) | une grappe serrée à laquelle on a greffé quelques sauts lointains |
+| `comp2` *(Kant et al. 2008)* | `Σ d(i, m)` où `m` est le client en **position médiane** de la tournée | O(n) | l'étalement autour du centre de la tournée |
+| `prox` *(Rossit et al. 2016)* | `|o| / |r|`, où `o` est l'ensemble des clients **plus proches de la médiane d'une autre tournée que de la leur** | O(K·n) | le **chevauchement de territoire**, directement |
+| `cross` *(Matis 2008)* | nombre de croisements entre arêtes de deux tournées distinctes, **arêtes du dépôt exclues** | O(E²) | l'entrelacement visible |
+
+`comp2` a la meilleure généalogie industrielle : c'est la métrique d'ORTEC, décrite
+dans Kant, Jacks & Aantjes, *Coca-Cola Enterprises Optimizes Vehicle Routes for
+Efficient Product Delivery*, **Interfaces 38(1), 2008** — un logiciel qui planifie
+environ 10 000 camions par jour.
+
+`prox` est la formalisation exacte de la plainte « ce client aurait dû être à l'autre
+coursier » : la **fraction des clients assis dans le territoire d'un autre**. C'est la
+seule des quatre à mesurer l'**inter**-tournée plutôt que la forme d'une tournée isolée,
+et donc le complément naturel du compte de croisements.
+
+**Ce que nous en avons tiré.** Notre audit comptait les croisements **sans exclure les
+arêtes du dépôt**, contrairement à la définition de Matis. Toutes les tournées partant
+d'un même point, leurs premiers et derniers segments se croisent mécaniquement : nous
+mesurions en partie la topologie du dépôt. Corrigé.
+
+`prox` et `comp1` restent à implémenter — voir les issues.
+
+**Réserve sur les sources.** Rossit et al. (2019) est sous péage et a renvoyé une
+erreur 403 à chaque tentative. Toutes les citations de ce panorama passent donc par la
+paraphrase qu'en donnent Rocha et al. Les mesures que nous avions envisagées de
+nous-mêmes — recouvrement d'enveloppes convexes, moment d'inertie, compacité
+surfacique, mesures angulaires — **n'apparaissent pas** dans la sélection de Rocha et
+al. ; impossible de dire si elles font partie des 14 et ont été écartées par l'analyse
+de corrélation, ou si elles n'ont jamais été considérées.
+
+---
+
 ---
 
 ## Non-croisement : un théorème, mais pour un seul véhicule
