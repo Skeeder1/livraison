@@ -202,12 +202,32 @@
 }
 .dr-sw { width: 9px; height: 9px; flex-shrink: 0; display: inline-block; }
 .dr-sw--depot { background: var(--accent); }
+/* Le hub est un point d'échange, pas un losange en pointillés : un carré
+   arrondi neutre, comme sur la carte. Il n'appartient à aucun coursier. */
 .dr-sw--hub {
-  border: 1.5px dashed var(--text-secondary);
-  transform: rotate(45deg);
+  border: 1.5px solid var(--text-secondary);
+  border-radius: 3px;
   background: transparent;
 }
+/* Les trois états d'un point de livraison. La couleur y appartient au coursier
+   qui le dessert : la légende ne montre donc que la forme, et c'est la carte
+   qui dit à qui il revient. */
 .dr-sw--pending { border: 1.5px solid var(--text-muted); border-radius: 50%; background: transparent; }
+.dr-sw--serving {
+  border: 1.5px solid var(--text-secondary);
+  border-radius: 50%;
+  background: transparent;
+  position: relative;
+}
+.dr-sw--serving::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-secondary);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+}
 .dr-sw--done { background: var(--text-secondary); border-radius: 50%; }
 
 /* ── Tooltip ── */

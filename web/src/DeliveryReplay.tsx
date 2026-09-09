@@ -504,11 +504,40 @@ export default function DeliveryReplay({
 
   // Which courier serves each customer, and when — used for the map colouring
   // and the hover tooltip.
+  // Les hubs où un colis a effectivement changé de mains. `hubFlybys` recense
+  // les passages devant un hub, ce qui n'est pas la même chose : un coursier
+  // qui longe un hub sans rien y déposer ne fait pas un échange.
+  const transferNodes = useMemo(() => {
+    // Indexé par coordonnées, et non par numéro de nœud : le dépôt et le
+    // retrait d'un transfert sont des nœuds distincts du hub lui-même, créés
+    // à la même position. Comparer les numéros ne rapproche jamais les deux.
+    const cle = (lat: number, lng: number) => `${lat.toFixed(5)},${lng.toFixed(5)}`;
+    const parVehicule = new Map<string, Set<number>>();
+    const hubNodes = new Set(data.hubs.map((h) => h.node));
+    for (const v of data.vehicles) {
+      for (const st of v.stops) {
+        if (st.kind !== 'hub' || hubNodes.has(st.node)) continue;
+        const k = cle(st.lat, st.lng);
+        if (!parVehicule.has(k)) parVehicule.set(k, new Set());
+        parVehicule.get(k)!.add(v.id);
+      }
+    }
+    // Deux coursiers distincts au même point : un colis y a changé de mains.
+    return new Set(
+      [...parVehicule.entries()].filter(([, ids]) => ids.size > 1).map(([k]) => k)
+    );
+  }, [data]);
+
   const customerInfo = useMemo(() => {
-    const map = new Map<number, { vehicle: number; at: number }>();
+    // `depart` en plus de `at` : c'est ce qui permet de distinguer les trois
+    // états d'un point — à livrer, en cours de livraison, livré. Sans lui on ne
+    // pouvait afficher que les deux extrêmes.
+    const map = new Map<number, { vehicle: number; at: number; depart: number }>();
     for (const v of data.vehicles) {
       for (const s of v.stops) {
-        if (s.kind === 'customer') map.set(s.node, { vehicle: v.id, at: s.arrive });
+        if (s.kind === 'customer') {
+          map.set(s.node, { vehicle: v.id, at: s.arrive, depart: s.depart });
+        }
       }
     }
     return map;
@@ -966,32 +995,74 @@ export default function DeliveryReplay({
       // Pass 3 — customers.
       for (const c of data.customers) {
         const info = customerInfo.get(c.node);
-        const done = info ? info.at <= t : false;
+        const done = info ? info.depart <= t : false;
+        const serving = info ? info.at <= t && t < info.depart : false;
         const dimmed = focus !== null && info?.vehicle !== focus;
         const [x, y] = project(c.lat, c.lng);
 
-        ctx.globalAlpha = dimmed ? 0.2 : 1;
+        // La couleur dit QUI dessert le point, la forme dit OÙ il en est. Un
+        // point à livrer porte donc déjà la couleur de son coursier, en creux :
+        // on lit l'affectation avant même que la tournée ne commence, ce qui
+        // était impossible tant que l'attente était grise et anonyme.
+        const color = info ? colors[info.vehicle % colors.length] : pending;
+        const base = dimmed ? 0.2 : 1;
+        ctx.globalAlpha = base;
+
         if (done && info) {
           const flash = flashes.get(c.node);
-          const color = colors[info.vehicle % colors.length];
           if (flash !== undefined) {
             const k = 1 - (now - flash) / 900;
             ctx.beginPath();
             ctx.arc(x, y, 4 + 14 * (1 - k), 0, Math.PI * 2);
             ctx.strokeStyle = color;
-            ctx.globalAlpha = (dimmed ? 0.2 : 1) * k * 0.7;
+            ctx.globalAlpha = base * k * 0.7;
             ctx.lineWidth = 2;
             ctx.stroke();
-            ctx.globalAlpha = dimmed ? 0.2 : 1;
+            ctx.globalAlpha = base;
           }
           ctx.beginPath();
           ctx.arc(x, y, 3.6, 0, Math.PI * 2);
           ctx.fillStyle = color;
           ctx.fill();
+        } else if (serving && info) {
+          // Déchargement en cours. L'arc se referme au rythme du service : la
+          // durée n'est pas décorative, elle est celle que le solveur a
+          // réservée à cet arrêt.
+          const avancement = Math.min(1, Math.max(0,
+            (t - info.at) / Math.max(1, info.depart - info.at)));
+          ctx.beginPath();
+          ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+          ctx.fillStyle = surface;
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.4;
+          ctx.stroke();
+          // Un service dure 60 s de simulation, soit une demi-seconde à l'écran
+          // au rythme par défaut. L'indicateur est donc dessiné franchement —
+          // halo puis arc épais — pour qu'un passage bref se remarque quand
+          // même. Sa durée n'est pas allongée : elle reste celle que le solveur
+          // a réservée, et ralentir le rejeu suffit à l'observer.
+          ctx.globalAlpha = base * 0.22;
+          ctx.beginPath();
+          ctx.arc(x, y, 9.5, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.globalAlpha = base;
+
+          ctx.beginPath();
+          ctx.arc(x, y, 6.8, -Math.PI / 2, -Math.PI / 2 + avancement * Math.PI * 2);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2.6;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+          ctx.lineCap = 'butt';
         } else {
+          ctx.globalAlpha = base * 0.55;
           ctx.beginPath();
           ctx.arc(x, y, 2.8, 0, Math.PI * 2);
-          ctx.strokeStyle = pending;
+          ctx.strokeStyle = color;
           ctx.lineWidth = 1.4;
           ctx.stroke();
         }
@@ -1002,16 +1073,38 @@ export default function DeliveryReplay({
       // because they anchor the whole scene.
       for (const hub of data.hubs) {
         const [x, y] = project(hub.lat, hub.lng);
+        // Un hub n'appartient à aucun coursier : il reste neutre, à l'écart du
+        // code couleur des tournées. Deux flèches opposées disent ce qu'il est
+        // — un point d'échange — là où un carré en pointillés ne disait rien.
+        // Il se remplit quand un colis y a réellement changé de mains.
+        const utilise = transferNodes.has(`${hub.lat.toFixed(5)},${hub.lng.toFixed(5)}`);
         ctx.save();
         ctx.translate(x, y);
-        ctx.rotate(Math.PI / 4);
-        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([3, 2]);
-        ctx.strokeRect(-5, -5, 10, 10);
+        ctx.strokeStyle = utilise ? '#ffffff' : 'rgba(255,255,255,0.4)';
+        ctx.fillStyle = surface;
+        ctx.lineWidth = 1.4;
+
+        ctx.beginPath();
+        ctx.roundRect(-7, -7, 14, 14, 4);
+        if (utilise) {
+          ctx.fillStyle = 'rgba(255,255,255,0.16)';
+          ctx.fill();
+        } else {
+          ctx.fill();
+        }
+        ctx.stroke();
+
+        // ⇄ : deux traits décalés, chacun sa pointe, tournés l'un vers l'autre.
+        ctx.lineWidth = 1.3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-3.4, -2);  ctx.lineTo(3.4, -2);
+        ctx.moveTo(1.6, -3.6); ctx.lineTo(3.4, -2); ctx.lineTo(1.6, -0.4);
+        ctx.moveTo(3.4, 2);    ctx.lineTo(-3.4, 2);
+        ctx.moveTo(-1.6, 0.4); ctx.lineTo(-3.4, 2); ctx.lineTo(-1.6, 3.6);
+        ctx.stroke();
         ctx.restore();
       }
-      ctx.setLineDash([]);
 
       const [dx, dy] = project(data.depot.lat, data.depot.lng);
       ctx.beginPath();
@@ -1075,7 +1168,7 @@ export default function DeliveryReplay({
 
       ctx.restore();
     },
-    [customerInfo, data, legMetrics]
+    [customerInfo, data, legMetrics, transferNodes]
   );
 
   // Repaint immediately when a non-animated input changes (theme, focus, the
@@ -1383,6 +1476,7 @@ export default function DeliveryReplay({
             <span className="dr-lg"><i className="dr-sw dr-sw--depot" />{strings.legend.depot}</span>
             <span className="dr-lg"><i className="dr-sw dr-sw--hub" />{strings.legend.hub}</span>
             <span className="dr-lg"><i className="dr-sw dr-sw--pending" />{strings.legend.pending}</span>
+            <span className="dr-lg"><i className="dr-sw dr-sw--serving" />{strings.legend.serving}</span>
             <span className="dr-lg"><i className="dr-sw dr-sw--done" />{strings.legend.delivered}</span>
           </div>
 

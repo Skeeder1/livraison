@@ -65,7 +65,7 @@ export interface DemoStrings {
   courierServed: string;
   load: string;
   phase: { driving: string; serving: string; waiting: string; done: string; idle: string };
-  legend: { depot: string; hub: string; pending: string; delivered: string };
+  legend: { depot: string; hub: string; pending: string; serving: string; delivered: string };
   events: string;
   eventStart: string;
   eventReload: string;
@@ -178,8 +178,9 @@ const en: DemoStrings = {
   },
   legend: {
     depot: 'Depot',
-    hub: 'Hub (unused)',
-    pending: 'Pending',
+    hub: 'Exchange point',
+    pending: 'To deliver',
+    serving: 'Unloading',
     delivered: 'Delivered',
   },
   events: 'Event log',
@@ -292,8 +293,9 @@ const fr: DemoStrings = {
   },
   legend: {
     depot: 'Dépôt',
-    hub: 'Hub (inutilisé)',
+    hub: 'Point d\u2019échange',
     pending: 'À livrer',
+    serving: 'Déchargement',
     delivered: 'Livré',
   },
   events: 'Journal',
