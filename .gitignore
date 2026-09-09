@@ -199,3 +199,6 @@ Thumbs.db
 
 # uv : le verrou est suivi, il fait partie de la reproductibilité.
 !uv.lock
+
+# Les articles en libre accès de l'état de l'art sont versionnés à dessein.
+!etat-de-l-art/articles/*.pdf
