@@ -192,4 +192,4 @@ Thumbs.db
 *.temp
 
 # PDF files (documentation)
-*.pdf
+*.pdf.claude/
