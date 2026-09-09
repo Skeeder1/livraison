@@ -7,9 +7,9 @@ tests. À tenir à jour à chaque fonctionnalité terminée.
 
 | Fonctionnalité | Point d'entrée | Tests |
 |---|---|---|
-| Résolution CVRPTW avec capacités, fenêtres horaires et équilibrage | `optimizer.solver.solve_vrp` | `tests/unit/test_solver_compat.py` |
-| Rechargement en cours de tournée (nœuds de dépôt dupliqués) | `optimizer.solver.setup_data_extensions` | `tests/integration/test_scenario.py` |
-| Transfert de colis entre véhicules via un hub (nœuds et véhicules fictifs) | `optimizer.solver.add_hub_constraints` | `tests/integration/test_scenario.py::TestSolveScenario::test_transferts_en_hub_actives` |
+| Résolution CVRPTW avec capacités, fenêtres horaires et équilibrage | `optimizer.solver.solve_vrp` | `tests/unit/test_solver_compat.py`, `tests/integration/test_model_properties.py` |
+| Rechargement en cours de tournée (nœuds de dépôt dupliqués) | `optimizer.solver.setup_data_extensions` | `tests/integration/test_model_properties.py::TestRechargements` |
+| Transfert de colis entre véhicules via un hub (nœuds et véhicules fictifs) | `optimizer.solver.add_hub_constraints` | `tests/integration/test_model_properties.py::TestTransfertsEnHub` |
 | Retrait effectif des hubs du problème | `optimizer.solver.strip_hubs` | `tests/unit/test_solver_nodes.py::TestStripHubs` |
 | Correspondance des nœuds étendus vers leur position physique | `optimizer.solver.create_base_node_mapping` | `tests/unit/test_solver_nodes.py::TestCreateBaseNodeMapping` |
 | Arbitrage avec / sans hubs, sur le temps total de livraison | `optimizer.solver.solve_vrp_with_optimal_hubs` | manuel (`python -m optimizer.main`) |
@@ -29,7 +29,7 @@ tests. À tenir à jour à chaque fonctionnalité terminée.
 
 | Fonctionnalité | Point d'entrée | Tests |
 |---|---|---|
-| Extraction des routes, charges et indicateurs | `optimizer.postprocessor.get_results` | `tests/unit/test_postprocessor.py` |
+| Extraction des routes, charges et indicateurs | `optimizer.postprocessor.get_results` | `tests/unit/test_postprocessor.py`, `tests/integration/test_model_properties.py::TestCapacite` |
 | Indicateur de déséquilibre de charge | `optimizer.postprocessor.compute_load_imbalance` | `tests/unit/test_postprocessor.py` |
 | Lecture d'une solution : attentes, charges par étape, sérialisation JSON | `optimizer.trace` | `tests/unit/test_trace.py` |
 | Carte animée Leaflet avec curseur temporel | `optimizer.print_solution.create_visualization` | manuel |
