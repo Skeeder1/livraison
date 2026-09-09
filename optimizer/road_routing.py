@@ -66,7 +66,7 @@ def _read_cache(cache_file):
     la requête : le calcul repart vers OSRM, et l'entrée sera réécrite.
     """
     try:
-        with open(cache_file, "r", encoding="utf-8") as handle:
+        with open(cache_file, encoding="utf-8") as handle:
             return json.load(handle)
     except FileNotFoundError:
         return None

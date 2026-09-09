@@ -1,12 +1,14 @@
 # optimizer/data_loader.py
 import json
-import numpy as np
-from typing import Any, Dict, List
 import os
+from typing import Any
+
+import numpy as np
 
 from optimizer.config import Config
 
-def load_data(data_dir: str) -> Dict[str, Any]:
+
+def load_data(data_dir: str) -> dict[str, Any]:
     """
     Loads all required data from JSON and NumPy files.
 
@@ -97,7 +99,7 @@ def load_data(data_dir: str) -> Dict[str, Any]:
     return data
 
 
-def _read_records(data_dir: str, filename: str) -> List[dict]:
+def _read_records(data_dir: str, filename: str) -> list[dict]:
     """Relit une table ecrite par `create_toy_data`, en liste d'enregistrements."""
-    with open(os.path.join(data_dir, filename), 'r', encoding='utf-8') as handle:
+    with open(os.path.join(data_dir, filename), encoding='utf-8') as handle:
         return json.load(handle)

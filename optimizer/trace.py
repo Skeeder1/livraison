@@ -12,7 +12,7 @@ redéfinir.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 
@@ -41,7 +41,7 @@ def convert_to_json_serializable(obj: Any) -> Any:
     return obj
 
 
-def compute_slacks(data: Dict[str, Any], manager, routing, solution) -> List[List[int]]:
+def compute_slacks(data: dict[str, Any], manager, routing, solution) -> list[list[int]]:
     """
     Reconstitue le temps d'attente à chaque étape de chaque tournée.
 
@@ -94,7 +94,7 @@ def compute_slacks(data: Dict[str, Any], manager, routing, solution) -> List[Lis
     return slacks
 
 
-def compute_cumulative_loads(data: Dict[str, Any], results: Dict[str, Any]) -> List[List[int]]:
+def compute_cumulative_loads(data: dict[str, Any], results: dict[str, Any]) -> list[list[int]]:
     """
     Charge transportée à chaque étape, véhicules fictifs compris.
 

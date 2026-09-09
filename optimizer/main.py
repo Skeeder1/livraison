@@ -19,9 +19,9 @@ import sys
 from pathlib import Path
 
 from optimizer.scenario import (
-    NoSolutionError,
     SCENARIO_DEFAULTS,
     SCENARIO_LIMITS,
+    NoSolutionError,
     ScenarioParamsError,
     solve_scenario,
 )

@@ -23,7 +23,7 @@ from __future__ import annotations
 import time
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from optimizer.config import Config
 from optimizer.create_toy_data import create_toy_data
@@ -51,7 +51,7 @@ class NoSolutionError(RuntimeError):
 #: Un scénario est du temps CPU : sans plafond, une requête suffit à saturer la
 #: machine. Les valeurs hautes correspondent à quelques dizaines de secondes de
 #: calcul sur un cœur.
-SCENARIO_LIMITS: Dict[str, tuple] = {
+SCENARIO_LIMITS: dict[str, tuple] = {
     'customers': (1, 120),
     'vehicles': (1, 8),
     'hubs': (0, 4),
@@ -65,7 +65,7 @@ SCENARIO_LIMITS: Dict[str, tuple] = {
 #: colis entre véhicules ; en demander sans vouloir de transfert n'a pas de sens,
 #: et c'est précisément la confusion qui a produit la démonstration figée, où les
 #: hubs étaient traversés sous contrainte. Voir `solve_scenario`.
-SCENARIO_DEFAULTS: Dict[str, Any] = {
+SCENARIO_DEFAULTS: dict[str, Any] = {
     'customers': 45,
     'vehicles': 3,
     'hubs': 0,
@@ -97,7 +97,7 @@ def _ortools_version() -> str:
         return 'inconnue'
 
 
-def _normalize_params(params: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_params(params: dict[str, Any]) -> dict[str, Any]:
     """
     Valide les paramètres reçus et complète les manquants.
 
@@ -140,11 +140,11 @@ def _normalize_params(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def solve_scenario(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     *,
     workdir: Path,
     fetch_roads: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Génère un scénario, le résout **une fois**, et retourne la tournée mise en forme.
 

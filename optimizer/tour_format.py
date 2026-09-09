@@ -43,7 +43,8 @@ Invariants garantis, et vérifiés par `tests/unit/test_tour_format.py` :
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, Iterable, List, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 # Les coordonnées sont stockées avec 5 décimales, soit ~1 m à cette latitude,
 # largement sous les ~15 m que couvre un pixel quand toute la journée est à
@@ -108,7 +109,7 @@ def _perpendicular_distance_m(
     return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
 
 
-def simplify(points: List[List[float]], tolerance_m: float) -> List[List[float]]:
+def simplify(points: list[list[float]], tolerance_m: float) -> list[list[float]]:
     """
     Simplification de Douglas-Peucker, en version itérative.
 
@@ -145,10 +146,10 @@ def simplify(points: List[List[float]], tolerance_m: float) -> List[List[float]]
             stack.append((first, worst_index))
             stack.append((worst_index, last))
 
-    return [p for p, k in zip(points, keep) if k]
+    return [p for p, k in zip(points, keep, strict=False) if k]
 
 
-def round_point(p: Sequence[float]) -> List[float]:
+def round_point(p: Sequence[float]) -> list[float]:
     """Arrondit un point à la précision de stockage."""
     return [round(p[0], COORD_PRECISION), round(p[1], COORD_PRECISION)]
 
@@ -200,7 +201,7 @@ def classify(
     return "reload" if demand < 0 else "hub"
 
 
-def _real_vehicle_count(src: Dict[str, Any]) -> int:
+def _real_vehicle_count(src: dict[str, Any]) -> int:
     """
     Nombre de véhicules à afficher.
 
@@ -219,7 +220,7 @@ def _real_vehicle_count(src: Dict[str, Any]) -> int:
     return next((i for i, c in enumerate(capacities) if c == 0), len(capacities))
 
 
-def build_tour(src: Dict[str, Any], meta: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def build_tour(src: dict[str, Any], meta: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     Convertit une solution en document de tournée prêt à être rejoué.
 
@@ -272,9 +273,9 @@ def build_tour(src: Dict[str, Any], meta: Dict[str, Any] | None = None) -> Dict[
     hub_nodes = set(base_hub_nodes) | set(src.get("hub_deposits", [])) | set(src.get("hub_pickups", []))
     reload_nodes = set(src.get("unload_depots", []))
 
-    vehicles: List[Dict[str, Any]] = []
-    reload_events: List[Dict[str, Any]] = []
-    hub_flybys: List[Dict[str, Any]] = []
+    vehicles: list[dict[str, Any]] = []
+    reload_events: list[dict[str, Any]] = []
+    hub_flybys: list[dict[str, Any]] = []
     total_road_m = 0.0
     kept_points = 0
     source_points = 0
@@ -283,8 +284,8 @@ def build_tour(src: Dict[str, Any], meta: Dict[str, Any] | None = None) -> Dict[
         route, times, load_trace, slack = routes[v], arrivals[v], loads[v], slacks[v]
         capacity = capacities[v]
 
-        stops: List[Dict[str, Any]] = []
-        legs: List[Dict[str, Any]] = []
+        stops: list[dict[str, Any]] = []
+        legs: list[dict[str, Any]] = []
 
         for i, node in enumerate(route):
             kind = classify(node, demands[node], num_customers, hub_nodes, reload_nodes)

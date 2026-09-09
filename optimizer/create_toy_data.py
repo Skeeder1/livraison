@@ -1,8 +1,9 @@
 # create_toy_data.py
 import json
-import numpy as np
 import os
-from typing import List, Tuple
+
+import numpy as np
+
 from optimizer.config import Config
 
 # Weights - Could be moved to Config if needed
@@ -14,7 +15,7 @@ WEIGHTS_DICT = {
     'waiting': 0.2
 }
 
-def generate_random_position() -> Tuple[float, float]:
+def generate_random_position() -> tuple[float, float]:
     """
     Tire une position au hasard dans la zone de livraison, autour du dépôt.
 
@@ -50,7 +51,7 @@ def _rounded(value):
     return value
 
 
-def _write_records(data_dir: str, filename: str, records: List[dict]) -> None:
+def _write_records(data_dir: str, filename: str, records: list[dict]) -> None:
     """
     Ecrit une table sous la forme d'une liste d'enregistrements.
 
@@ -71,7 +72,7 @@ def _write_records(data_dir: str, filename: str, records: List[dict]) -> None:
 
 
 # Function to compute Euclidean distance matrix from positions
-def compute_distance_matrix(locations: List[Tuple[float, float]]) -> np.ndarray:
+def compute_distance_matrix(locations: list[tuple[float, float]]) -> np.ndarray:
     """Distances euclidiennes planes, exprimées en degrés de latitude.
 
     L'écart de longitude est ramené à l'échelle de la latitude par un facteur
