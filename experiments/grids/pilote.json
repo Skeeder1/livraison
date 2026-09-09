@@ -1,0 +1,25 @@
+{
+  "name": "pilote",
+  "budget_seconds": 5,
+  "scenario": {
+    "customers": 45,
+    "vehicles": 3,
+    "capacity": 10,
+    "time_windows_binding": false
+  },
+  "scenario_variants": [
+    {"hubs": 0},
+    {"hubs": 2}
+  ],
+  "baseline_factors": {},
+  "sweeps": [
+    {
+      "factor": "TIME_SPAN_COEFFICIENT",
+      "values": [15, 200, 2000]
+    },
+    {
+      "factor": "TRANSFER_PENALTY_METERS",
+      "values": [0, 100000]
+    }
+  ]
+}

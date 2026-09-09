@@ -84,6 +84,24 @@ class TestSignTest:
     def test_six_contre_quatre_n_est_pas_significatif(self):
         assert stats.sign_test(6, 4) > 0.05
 
+    def test_cinq_paires_ne_peuvent_jamais_être_significatives(self):
+        # 2 / 2**5 = 0,0625 : le plancher du test dépasse le seuil usuel.
+        assert stats.sign_test(5, 0) == pytest.approx(0.0625)
+        assert stats.sign_test(5, 0) > 0.05
+
+
+class TestPuissance:
+    def test_six_paires_suffisent_au_seuil_usuel(self):
+        assert stats.min_pairs_for_significance(0.05) == 6
+
+    def test_un_seuil_plus_exigeant_demande_plus_de_paires(self):
+        assert stats.min_pairs_for_significance(0.01) > stats.min_pairs_for_significance(0.05)
+
+    def test_le_plancher_du_test_est_bien_atteint(self):
+        n = stats.min_pairs_for_significance(0.05)
+        assert stats.sign_test(n, 0) <= 0.05
+        assert stats.sign_test(n - 1, 0) > 0.05
+
 
 class TestAverageRanks:
     def test_le_meilleur_a_le_rang_un(self):
@@ -185,6 +203,15 @@ class TestRecommend:
         assert reco["significant"] is False
         assert "hasard" in reco["reason"]
 
+    def test_un_plan_trop_petit_est_dit_inconclusif_et_non_sans_effet(self):
+        # 5 paires : le test des signes plafonne à p = 0,0625 et ne peut pas
+        # franchir 0,05. Annoncer « aucun effet » serait un mensonge par omission.
+        reco = recommend(self._summary(wins=5, losses=0, ties=0, p_value=0.0625))
+        assert reco["value"] == 200
+        assert reco["significant"] is False
+        assert "INCONCLUSIF" in reco["reason"]
+        assert "puissance" in reco["reason"]
+
     def test_un_gain_significatif_déplace_la_recommandation(self):
         reco = recommend(self._summary(wins=10, losses=0, ties=0, p_value=0.002))
         assert reco["value"] == 800
@@ -217,6 +244,12 @@ class TestBuildReport:
         b["budget_seconds"] = 30
         report, _ = build_report([a, b], tmp_path / "r.jsonl")
         assert "plusieurs budgets" in report
+
+    def test_le_rapport_signale_un_plan_sous_dimensionné(self, tmp_path):
+        rows = [row("base", 0, baseline=True, memberships=[("F", 200)]),
+                row("cand", 0, memberships=[("F", 800)], factors={"F": 800})]
+        report, _ = build_report(rows, tmp_path / "r.jsonl")
+        assert "PUISSANCE INSUFFISANTE" in report
 
     def test_le_rapport_compte_les_échecs(self, tmp_path):
         failed = row("cand", 0, memberships=[("F", 800)], factors={"F": 800}, ok=False)
