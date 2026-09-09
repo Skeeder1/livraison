@@ -62,9 +62,29 @@ la machine, et la campagne tournait à douze processus simultanés. Relevé : RC
 paramètres identiques, a rendu **98 clients servis** en campagne et **100** en
 diagnostic.
 
-Chaque écart de ce tableau porte cette variance, et repose sur **une seule exécution**.
-Les cellules marquées invalides sont **limites et sensibles à la charge**, pas des
-propriétés stables du solveur.
+Chaque écart de ce tableau repose sur **une seule exécution**.
+
+**Reprise de contrôle, machine calme, trois processus au lieu de douze, budget 300 s.**
+Elle départage ce qui relevait de la charge et ce qui n'en relevait pas :
+
+| cellule | campagne chargée | machine calme |
+|---|---|---|
+| C101 distance | +0,00 | **+0,00** |
+| R101 distance | +0,66 | **+0,66** |
+| RC101 distance | +1,01 | **+1,01** |
+| R101 hiérarchique | +0,64 | **+0,03** |
+| RC101 hiérarchique, flotte 14 | invalide | **invalide** |
+
+Les écarts de tête sont **identiques au centième** : ils ne sont pas des artefacts de
+charge. R101 en objectif hiérarchique s'améliore nettement à machine calme, de +0,64 %
+à **+0,03 %** — 1651,26 contre 1650,80 pour la meilleure solution connue.
+
+Et l'échec sur RC101 à flotte 14 **persiste** à 300 s sans concurrence : ce n'était donc
+pas du bruit. C'est bien la limite de recherche décrite plus bas.
+
+Conclusion : **la variance touche les cellules courtes et les cas limites, pas les
+écarts principaux.** Cela ne dispense pas d'un protocole à N exécutions pour publier,
+mais les trois chiffres de tête sont reproductibles.
 
 La convention du champ, telle que la décrit Vidal : OR-Tools **est déterministe à
 entrée fixée**, mais dépend de l'ordre des clients dans le fichier. Dix exécutions
