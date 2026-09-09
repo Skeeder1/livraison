@@ -1,3 +1,12 @@
+"""Construction et résolution du modèle de routage.
+
+Ce module descend de l'échantillon « CVRPTW with reload » de Google OR-Tools
+(Copyright 2015 Tin Arm Engineering AB, Copyright 2018 Google LLC, licence
+Apache 2.0). Il en a conservé la structure d'un CVRPTW avec rechargement et
+l'idiome des fabriques d'évaluateurs ; le reste a été réécrit, et le rendez-vous
+entre coursiers y a été ajouté. Voir le fichier NOTICE à la racine pour le détail
+des modifications et le texte de la licence d'origine.
+"""
 # optimizer/solver.py
 from functools import partial
 from ortools.constraint_solver import pywrapcp

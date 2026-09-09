@@ -1,0 +1,52 @@
+Delivery Route Optimizer
+Copyright (c) 2026 Elias Bellouti
+
+Ce projet est distribué sous licence MIT (voir LICENSE).
+
+--------------------------------------------------------------------------------
+Travaux antérieurs
+--------------------------------------------------------------------------------
+
+`optimizer/solver.py` descend de l'échantillon « CVRPTW with reload » distribué
+avec Google OR-Tools, arrivé dans ce dépôt au commit initial sous le nom
+`cvrptw_reload_V2.py`, accompagné des échantillons d'origine dans un dossier
+`official/`. Cet échantillon porte l'en-tête suivant :
+
+    Copyright 2015 Tin Arm Engineering AB
+    Copyright 2018 Google LLC
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+Ce que l'échantillon a fourni : la structure d'un CVRPTW avec rechargement en
+cours de tournée (nœuds de déchargement dupliqués au dépôt), la mise en place
+des dimensions distance / capacité / temps, et l'idiome des fabriques
+d'évaluateurs — dont les noms `create_distance_evaluator`,
+`create_demand_evaluator` et `create_time_evaluator` subsistent aujourd'hui
+comme fonctions imbriquées.
+
+Modifications importantes apportées depuis, au sens de la section 4(b) de la
+licence Apache 2.0 :
+
+  - Le rendez-vous entre coursiers : paire de nœuds dépôt/retrait par hub,
+    contrainte de véhicules distincts sous forme réifiée, liaison des
+    activations, et précédence temporelle. Cette construction n'existe pas dans
+    l'échantillon.
+  - Le découpage complet en fonctions et la réécriture de la construction du
+    modèle ; aucun nom de fonction de premier niveau n'est commun.
+  - L'API de scénario (`optimizer/scenario.py`), le document de tournée
+    (`optimizer/tour_format.py`), la trace de solution (`optimizer/trace.py`)
+    et la géométrie routière OSRM (`optimizer/road_routing.py`).
+  - Le générateur d'instances sur Paris et la métrique de distance corrigée en
+    cos(latitude).
+  - L'interface web (`web/`).
+
+Les ajouts propres à ce dépôt restent sous licence MIT.

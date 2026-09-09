@@ -246,6 +246,28 @@ This is an operations-research prototype, and some simplifications are deliberat
 - **Reported computation time is hard-coded to zero**: it is not instrumented yet.
 - **The data is synthetic**, generated around Paris. The input format (`colis.json`, `livreurs.json`, `hubs.json`) accepts real data without code changes.
 
+## Provenance
+
+This solver did not start from a blank file. `optimizer/solver.py` descends from
+the **OR-Tools "CVRPTW with reload" sample** (Copyright 2015 Tin Arm Engineering
+AB, Copyright 2018 Google LLC, Apache 2.0), which arrived in the initial commit
+as `cvrptw_reload_V2.py` alongside the untouched originals in an `official/`
+folder.
+
+The sample supplied the shape of a capacitated VRP with time windows and
+mid-route reloading. What was built on top of it:
+
+- **the courier hand-over** — a deposit/pickup node pair per hub, with a reified
+  different-vehicle constraint, linked activations and time precedence. This is
+  not in the sample, and it is the part of the model worth reading.
+- a full restructuring into functions — no top-level function name is shared
+- the scenario API, the tour document, the solution trace, and OSRM road geometry
+- the Paris instance generator and a distance metric corrected for cos(latitude)
+- the web interface in `web/`
+
+See [`NOTICE`](NOTICE) for the original licence text and the full list of
+changes. Contributions original to this repository are MIT.
+
 ## License
 
 MIT
