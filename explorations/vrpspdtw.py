@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-VRPSPDTW : enlèvement et livraison appariés, avec fenêtres horaires.
+Enlèvement et livraison APPARIÉS, avec fenêtres horaires (PDPTW).
 
-Jalon du projet, conservé tel qu'il a été écrit. Ce n'est PAS le solveur livré
-(celui-ci vit dans `optimizer/`), mais l'étape qui a rendu exprimable l'idée
-centrale : un colis pris par un coursier et remis par un autre.
+Jalon du projet, antérieur au solveur livré (`optimizer/`). C'est l'étape qui a
+rendu exprimable l'idée centrale : un colis pris quelque part et remis ailleurs.
 
-Trois contraintes suffisent à poser un enlèvement-livraison, et elles sont
-toutes les trois ici :
+Le nom du fichier dit VRPSPDTW, avec un S pour « simultané ». Le code n'en fait
+rien : chaque nœud est un enlèvement OU une livraison, jamais les deux, et les
+paires relient un client à un autre. C'est un PDPTW. Le fichier garde son nom
+d'origine, la correction est ici.
+
+Trois contraintes suffisent à poser un enlèvement-livraison, et elles y sont :
 
     routing.AddPickupAndDelivery(pickup, delivery)          apparie les deux nœuds
     VehicleVar(pickup) == VehicleVar(delivery)              même véhicule
@@ -15,18 +18,23 @@ toutes les trois ici :
 
 S'y ajoutent une dimension Capacity et des fenêtres horaires par nœud.
 
-Ce que le solveur livré en a gardé, et ce qu'il en a changé : le hub reprend la
-paire de nœuds et la précédence, mais inverse volontairement la contrainte de
-véhicule en `VehicleVar(depot) != VehicleVar(pickup)`. C'est là toute
-l'échange entre coursiers : le colis doit changer de mains, donc les deux nœuds
-de la paire doivent appartenir à deux tournées différentes.
+Deux défauts l'empêchaient de calculer quoi que ce soit, et ont été corrigés :
 
-Il tourne et rend une tournée qui respecte les paires et la précédence. Un
-détail conservé tel quel : le total affiché est « Distance: 0m », parce que la
-matrice de Manhattan passe par `int()` avant d'atteindre l'objectif, exactement
-le même écueil que celui documenté plus tard dans `AGENTS.md` pour le solveur
-livré. Le laisser visible vaut mieux que le corriger après coup dans un fichier
-gardé comme trace.
+  * `create_time_callback` lisait `data['manager']`, jamais affecté ;
+  * il renvoyait un flottant, là où OR-Tools attend un entier 64 bits.
+
+Dans les deux cas l'exception Python remonte dans la recherche C++ sans être
+propagée : elle reste attachée au fil d'exécution, et TOUS les rappels suivants
+renvoient zéro. Le solveur trouvait alors des tournées valides sur un objectif
+nul et affichait « Distance: 0m », sans que rien ne signale la panne. C'est le
+même symptôme que la troncature `int()` du solveur livré — un coût d'arc
+silencieusement nul — par un tout autre mécanisme.
+
+Sur le lien avec le solveur livré, une précision que l'historique impose : le
+hub y reprend la paire de nœuds et la précédence, mais exige deux véhicules
+DIFFÉRENTS là où l'on exige ici le même. Cette inversion ne vient pas de ce
+fichier : `cvrptw_reload_V2.py` la portait déjà dans le commit initial. Les deux
+pistes ont été explorées en parallèle, pas l'une dérivée de l'autre.
 
 Lancer : python explorations/vrpspdtw.py
 """
@@ -107,7 +115,12 @@ def create_time_callback(data):
         
         # Ajouter le temps de service du node de départ
         service_time = data['service_time'] if from_node != data['depot'] else 0
-        return travel_time + service_time
+        # OR-Tools attend un entier 64 bits. Renvoyer un flottant lève une
+        # TypeError que la couche SWIG ne propage pas : l'exception reste
+        # attachée au thread, et TOUS les rappels suivants renvoient zéro. Le
+        # solveur trouvait alors des tournées valides sur un objectif nul,
+        # affichait « Distance: 0m », et rien ne signalait la panne.
+        return int(travel_time + service_time)
     return time_callback
 
 def add_capacity_constraints(routing, data, manager):
@@ -155,7 +168,6 @@ def print_solution(data, routing, manager, solution):
             previous_index = index
             index = solution.Value(routing.NextVar(index))
             route_distance += routing.GetArcCostForVehicle(previous_index, index, vehicle_id)
-            print(previous_index, index, vehicle_id)
         node = manager.IndexToNode(index)
         time_var = time_dimension.CumulVar(index)
         load_var = capacity_dimension.CumulVar(index)
@@ -176,6 +188,11 @@ def main():
     )
     
     routing = pywrapcp.RoutingModel(manager)
+
+    # `create_time_callback` lit `data['manager']`, qui n'était jamais posé :
+    # l'appel levait un KeyError à l'intérieur de la recherche C++, d'où le
+    # zéro généralisé décrit dans l'en-tête.
+    data['manager'] = manager
 
     # Injection du manager dans la création du callback
     dist_cb = create_distance_callback(data, manager)
