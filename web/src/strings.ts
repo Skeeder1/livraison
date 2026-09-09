@@ -39,6 +39,7 @@ export interface DemoStrings {
     off: string;
     budget: string;
     seconds: string;
+    minutes: string;
     run: string;
     cancel: string;
     reset: string;
@@ -138,6 +139,7 @@ const en: DemoStrings = {
     off: 'Off',
     budget: 'Search budget',
     seconds: '{n} s',
+    minutes: '{n} min',
     run: 'Generate',
     cancel: 'Cancel',
     reset: 'Reference tour',
@@ -252,6 +254,7 @@ const fr: DemoStrings = {
     off: 'Non',
     budget: 'Budget de recherche',
     seconds: '{n} s',
+    minutes: '{n} min',
     run: 'Générer',
     cancel: 'Annuler',
     reset: 'Tournée de référence',

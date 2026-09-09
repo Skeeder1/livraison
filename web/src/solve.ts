@@ -30,7 +30,13 @@ export const CUSTOMERS = { min: 10, max: 60, step: 5 } as const;
 export const CAPACITY = { min: 5, max: 20, step: 1 } as const;
 export const VEHICLE_CHOICES = [1, 2, 3, 4, 5, 6] as const;
 export const HUB_CHOICES = [0, 1, 2, 3] as const;
-export const BUDGET_CHOICES = [2, 5, 10] as const;
+/** Durées de recherche proposées, en secondes.
+ *
+ *  Mesuré : sur une instance à 45 clients, la dernière amélioration d'une
+ *  recherche de 10 s tombe à 9 996 ms — elle progressait encore quand le temps
+ *  s'est arrêté. Les budgets courts ne convergent pas, et rien ne le disait au
+ *  visiteur. */
+export const BUDGET_CHOICES = [5, 15, 30, 60] as const;
 
 /** The reference instance, so an untouched panel describes what is on screen
  *  when the visitor arrives.
@@ -50,7 +56,10 @@ export const DEFAULT_PARAMS: SolveParams = {
   hubs: 0,
   capacity: 10,
   timeWindows: false,
-  budgetSeconds: 5,
+  // Ni le minimum ni le maximum : à 5 s la recherche n'a pas convergé, et la
+  // comparaison avec la tournée de référence accablerait le solveur pour une
+  // raison qui tient au budget et non au modèle.
+  budgetSeconds: 15,
 };
 
 /** Wall-clock slack on top of the search budget before the client gives up.

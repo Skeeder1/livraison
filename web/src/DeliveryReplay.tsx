@@ -1751,7 +1751,9 @@ export default function DeliveryReplay({
                       disabled={solving}
                       onClick={() => setParams((p) => ({ ...p, budgetSeconds: n }))}
                     >
-                      {strings.solve.seconds.replace('{n}', String(n))}
+                      {n >= 60
+                        ? strings.solve.minutes.replace('{n}', String(n / 60))
+                        : strings.solve.seconds.replace('{n}', String(n))}
                     </button>
                   ))}
                 </div>
