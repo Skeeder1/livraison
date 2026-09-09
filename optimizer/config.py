@@ -9,7 +9,6 @@ class Config:
     TIME_SPAN_COEFFICIENT = 200        # OPTIMAL: Config 1 - Best performance/balance tradeoff
     CAPACITY_SPAN_COEFFICIENT = 50     # OPTIMAL: Config 1
     DISTANCE_SPAN_COEFFICIENT = 30     # OPTIMAL: Config 1
-    MAX_TIME_RATIO = 2.0               # Maximum acceptable time ratio (max_time / min_time)
 
     # ── Zone de livraison ────────────────────────────────────────────────
     # Le dépôt était placé en (0.0, 0.0), c'est-à-dire « Null Island » : un point
@@ -60,6 +59,15 @@ class Config:
     DISTANCE_TO_TIME_FACTOR = 20000.0
     SERVICE_TIME_PER_UNIT = 60  # 60 seconds per demand unit for service time
 
+    # Distance maximale d'un véhicule, en mètres. Sert aussi de coût sentinelle
+    # sur les arcs entre deux points de rechargement, pour les rendre prohibitifs.
+    VEHICLE_MAX_DISTANCE_METERS = 100_000
+
+    # Horizon de la dimension temporelle, en secondes : borne haute des cumuls et
+    # attente maximale autorisée à un nœud. Très large devant une journée de
+    # livraison (86 400 s), donc non contraignante en pratique.
+    TIME_HORIZON_SECONDS = 1_440_000
+
     # Graine du générateur aléatoire des données jouet.
     # Fixée pour que deux exécutions produisent le même scénario : indispensable
     # pour comparer des configurations, rejouer un cas, ou réutiliser le cache
@@ -89,8 +97,6 @@ class Config:
 
     # Vehicle shifts (en secondes)
     START_TIME_MIN = 0
-    START_TIME_MAX = 0
-    END_TIME_MIN = 86400  # 24 heures en secondes
     END_TIME_MAX = 200000
 
     # Analysis parameters

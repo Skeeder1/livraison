@@ -29,6 +29,12 @@ def _donnees_minimales(num_customers=3, num_hubs=2, num_vehicles=2):
         'vehicle_capacities': [10] * num_vehicles,
         'start_times': [0] * num_vehicles,
         'end_times': [86400] * num_vehicles,
+        # Posés par `data_loader.load_data` depuis Config : le fixture doit
+        # refléter un dictionnaire réellement chargé, sinon il teste un état que
+        # le solveur ne rencontre jamais.
+        'time_per_demand_unit': Config.SERVICE_TIME_PER_UNIT,
+        'vehicle_max_time': Config.TIME_HORIZON_SECONDS,
+        'vehicle_max_distance': Config.VEHICLE_MAX_DISTANCE_METERS,
     }
 
 

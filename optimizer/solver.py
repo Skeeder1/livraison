@@ -74,10 +74,12 @@ def setup_data_extensions(data):
     # Convert vehicle capacities to integers
     vehicle_capacities = [int(cap) for cap in data['vehicle_capacities']]
     
-    # Set additional parameters
-    data['time_per_demand_unit'] = 5
-    data['vehicle_max_distance'] = 100000
-    data['vehicle_max_time'] = 1440000
+    # `data_loader` a déjà posé `time_per_demand_unit`, `vehicle_max_distance` et
+    # `vehicle_max_time` depuis Config. Les réécrire ici cassait la chronologie
+    # publiée : le solveur contraignait avec 60 s de service par unité
+    # (`service_time`, plus haut) pendant que `tour_format` reconstruisait les
+    # horaires avec la valeur 5 écrasée ici. Les coursiers repartaient 55 s par
+    # unité trop tôt, l'écart étant absorbé en silence par le temps de trajet.
 
     # Identify reload group for depot and unload depots
     reload_group = [data['depot']]

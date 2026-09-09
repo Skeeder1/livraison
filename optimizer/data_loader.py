@@ -92,8 +92,8 @@ def load_data(data_dir: str) -> Dict[str, Any]:
     # une variable locale à toute la fonction, y compris avant cette ligne.
     data['time_per_demand_unit'] = Config.SERVICE_TIME_PER_UNIT
     data['distance_to_time_factor'] = Config.DISTANCE_TO_TIME_FACTOR  # Facteur de conversion distance->temps
-    data['vehicle_max_time'] = Config.END_TIME_MAX
-    data['vehicle_max_distance'] = 100000  # Large value for distance penalties
+    data['vehicle_max_time'] = Config.TIME_HORIZON_SECONDS
+    data['vehicle_max_distance'] = Config.VEHICLE_MAX_DISTANCE_METERS
 
     return data
 
