@@ -14,7 +14,7 @@ def load_data(data_dir: str) -> Dict[str, Any]:
     :return: Dictionary with loaded data.
     """
     # Validate file existence
-    for file in ['colis.json', 'livreurs.json', 'hubs.json', 'weights.json', 'distance_matrix.npy', 'time_matrix.npy']:
+    for file in ['colis.json', 'livreurs.json', 'hubs.json', 'weights.json', 'distance_matrix.npy']:
         if not os.path.exists(os.path.join(data_dir, file)):
             raise FileNotFoundError(f"Missing file: {file} in {data_dir}")
 
@@ -37,7 +37,6 @@ def load_data(data_dir: str) -> Dict[str, Any]:
         'hubs': hubs,
         'weights': {entry['criterion']: entry['weight'] for entry in weights},
         'distance_matrix': np.load(f"{data_dir}/distance_matrix.npy"),
-        'time_matrix': np.load(f"{data_dir}/time_matrix.npy"),
         'depot': 0,  # Assuming depot is always node 1
     }
 

@@ -135,9 +135,15 @@ class TestCacheOsrm:
 
 
 class TestRepliEnLigneDroite:
-    """Le module ne lève jamais, quoi que fasse le réseau."""
+    """Le module ne lève jamais, et n'invente jamais de géométrie routière.
 
-    def test_osrm_injoignable_donne_des_segments_droits(self, cache_temporaire, monkeypatch):
+    Un échec réseau renvoie `None` par segment plutôt qu'une ligne droite.
+    C'est ce qui permet à `tour_format` de marquer `legs[].road = false` : tant
+    que le repli renvoyait deux points, il était indiscernable d'un vrai tracé
+    et le document publié annonçait une géométrie routière hors ligne.
+    """
+
+    def test_osrm_injoignable_ne_produit_aucune_geometrie(self, cache_temporaire, monkeypatch):
         # ── ARRANGE ────────────────────────────────────────────────
         def urlopen_qui_echoue(url, timeout=None):
             raise road_routing.urllib.error.URLError("réseau coupé")
@@ -148,12 +154,9 @@ class TestRepliEnLigneDroite:
         legs = road_routing.fetch_route_legs(WAYPOINTS)
 
         # ── ASSERT ─────────────────────────────────────────────────
-        assert legs == [
-            [list(WAYPOINTS[0]), list(WAYPOINTS[1])],
-            [list(WAYPOINTS[1]), list(WAYPOINTS[2])],
-        ]
+        assert legs == [None, None], "un échec réseau ne fabrique pas de tracé"
 
-    def test_une_reponse_en_erreur_donne_des_segments_droits(self, cache_temporaire, monkeypatch):
+    def test_une_reponse_en_erreur_ne_produit_aucune_geometrie(self, cache_temporaire, monkeypatch):
         # ── ARRANGE ────────────────────────────────────────────────
         def urlopen_en_erreur(url, timeout=None):
             return _FakeResponse(json.dumps({"code": "NoRoute"}))
@@ -164,7 +167,7 @@ class TestRepliEnLigneDroite:
         legs = road_routing.fetch_route_legs(WAYPOINTS)
 
         # ── ASSERT ─────────────────────────────────────────────────
-        assert all(len(leg) == 2 for leg in legs)
+        assert all(leg is None for leg in legs)
 
     def test_un_echec_n_ecrit_rien_dans_le_cache(self, cache_temporaire, monkeypatch):
         """Un repli en lignes droites ne doit pas se figer en cache."""
@@ -179,3 +182,27 @@ class TestRepliEnLigneDroite:
 
         # ── ASSERT ─────────────────────────────────────────────────
         assert not cache_temporaire.exists() or not list(cache_temporaire.iterdir())
+
+
+class TestBuildRoadLegs:
+    """Le dictionnaire ne contient que des tracés réellement routiers."""
+
+    def test_omet_les_segments_sans_geometrie(self, cache_temporaire, monkeypatch):
+        """Hors ligne, aucune clé n'est produite.
+
+        `tour_format` retombe alors sur le segment droit et marque
+        `road: false`. Auparavant les clés existaient avec deux points, et le
+        document publié annonçait `road: true` sans réseau.
+        """
+        # ── ARRANGE ────────────────────────────────────────────────
+        def urlopen_qui_echoue(url, timeout=None):
+            raise road_routing.urllib.error.URLError("réseau coupé")
+
+        monkeypatch.setattr(road_routing.urllib.request, "urlopen", urlopen_qui_echoue)
+        locations = [(48.85, 2.35), (48.86, 2.36), (48.87, 2.37)]
+
+        # ── ACT ────────────────────────────────────────────────────
+        road_legs = road_routing.build_road_legs(locations, [[0, 1, 2, 0]])
+
+        # ── ASSERT ─────────────────────────────────────────────────
+        assert road_legs == {}

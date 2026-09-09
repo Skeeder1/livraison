@@ -58,8 +58,6 @@ def strip_hubs(data):
     stripped['demands'] = list(data['demands'][:num_nodes])
     stripped['time_windows'] = list(data['time_windows'][:num_nodes])
     stripped['distance_matrix'] = data['distance_matrix'][:num_nodes, :num_nodes]
-    if 'time_matrix' in data:
-        stripped['time_matrix'] = data['time_matrix'][:num_nodes, :num_nodes]
 
     return stripped
 

@@ -125,7 +125,6 @@ class TestStripHubs:
         data = _donnees_minimales(num_customers=3, num_hubs=2)
         import numpy as np
         data['distance_matrix'] = np.zeros((6, 6))
-        data['time_matrix'] = np.zeros((6, 6))
 
         # ── ACT ────────────────────────────────────────────────────
         stripped = strip_hubs(data)
@@ -137,7 +136,6 @@ class TestStripHubs:
         assert len(stripped['demands']) == 4
         assert len(stripped['time_windows']) == 4
         assert stripped['distance_matrix'].shape == (4, 4)
-        assert stripped['time_matrix'].shape == (4, 4)
 
     def test_ne_modifie_pas_les_donnees_d_origine(self):
         """`solve_vrp` mute son argument : la copie doit posséder ses listes."""
@@ -145,7 +143,6 @@ class TestStripHubs:
         data = _donnees_minimales(num_customers=3, num_hubs=2)
         import numpy as np
         data['distance_matrix'] = np.zeros((6, 6))
-        data['time_matrix'] = np.zeros((6, 6))
 
         # ── ACT ────────────────────────────────────────────────────
         stripped = strip_hubs(data)

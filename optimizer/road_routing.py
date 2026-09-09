@@ -143,12 +143,12 @@ def fetch_route_legs(waypoints):
         with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT) as response:
             payload = json.load(response)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
-        print(f"   ⚠️  OSRM injoignable ({exc}) — tracé en lignes droites.")
-        return _straight_legs(waypoints)
+        print(f"   ⚠️  OSRM injoignable ({exc}) — aucune géométrie routière.")
+        return [None] * (len(waypoints) - 1)
 
     if payload.get("code") != "Ok" or not payload.get("routes"):
-        print(f"   ⚠️  OSRM a répondu '{payload.get('code')}' — tracé en lignes droites.")
-        return _straight_legs(waypoints)
+        print(f"   ⚠️  OSRM a répondu '{payload.get('code')}' — aucune géométrie routière.")
+        return [None] * (len(waypoints) - 1)
 
     legs = []
     for leg in payload["routes"][0]["legs"]:
@@ -162,9 +162,10 @@ def fetch_route_legs(waypoints):
                     points.append(point)
         legs.append(points if len(points) >= 2 else None)
 
-    # Un segment vide (point non raccordé au réseau) retombe en ligne droite.
-    straight = _straight_legs(waypoints)
-    legs = [leg if leg else straight[i] for i, leg in enumerate(legs)]
+    # Un segment non raccordé au réseau reste None : c'est `tour_format` qui
+    # tracera la ligne droite, et il marquera alors `road: false`. Y substituer
+    # ici une géométrie droite la rendait indiscernable d'un vrai tracé routier,
+    # et `legs[].road` valait `true` même hors ligne.
 
     _write_cache(cache_file, legs)
 
@@ -188,5 +189,8 @@ def build_road_legs(locations, routes):
         waypoints = [tuple(locations[node]) for node in route]
         legs = fetch_route_legs(waypoints)
         for i, leg in enumerate(legs):
-            road_legs[f"{route[i]}-{route[i + 1]}"] = leg
+            # Une absence de géométrie n'est pas inscrite : le consommateur
+            # distingue ainsi un tracé routier réel d'un repli en ligne droite.
+            if leg:
+                road_legs[f"{route[i]}-{route[i + 1]}"] = leg
     return road_legs

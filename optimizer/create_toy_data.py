@@ -121,7 +121,6 @@ def create_toy_data(data_dir: str | None = None, verbose: bool = True) -> None:
     # Compute matrices
     distance_matrix = compute_distance_matrix(locations)
     # Nouveau calcul du temps : distance * DISTANCE_TO_TIME_FACTOR
-    time_matrix = distance_matrix * Config.DISTANCE_TO_TIME_FACTOR
 
     # Toy colis
     # Les deux bornes sont tirees colonne par colonne, et non client par client.
@@ -177,7 +176,6 @@ def create_toy_data(data_dir: str | None = None, verbose: bool = True) -> None:
 
     # Save matrices
     np.save(os.path.join(data_dir, 'distance_matrix.npy'), distance_matrix)
-    np.save(os.path.join(data_dir, 'time_matrix.npy'), time_matrix)
 
     if verbose:
         print(f"Toy data created in {data_dir} with configuration:")
