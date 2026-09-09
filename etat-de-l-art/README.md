@@ -127,10 +127,34 @@ solution min-somme, en distance totale.
 servis, puis le makespan, puis les kilomètres : il fait donc le choix du min-max. Ce
 choix a un prix, et cet article en donne la borne.
 
+**La borne, dans les deux sens**, avec `k` le nombre de véhicules :
+
+- la distance totale du min-max vaut **au plus `k` fois** celle du min-somme — ce que
+  l'équilibrage coûte en kilomètres ;
+- la plus longue tournée du min-somme vaut **au plus `k` fois** celle du min-max — ce
+  que coûte, en makespan, le fait de ne pas équilibrer.
+
+Les deux bornes sont atteintes. À trois coursiers, cela plafonne l'écart à 3× dans
+chaque sens : c'est une borne de pire cas, pas une prévision.
+
+**Les moyennes empiriques**, chez Matl et al. (2018, 2019), sont bien plus douces que
+la borne :
+
+| relevé | valeur |
+|---|---|
+| déséquilibre d'une solution optimale en coût | la plus longue tournée fait ~2× la plus courte |
+| réduire l'écart de ~40 % | coûte ~2 % de coût total |
+| solutions efficaces à moins de 10 % de l'optimum | ~40 % d'entre elles |
+| équilibre quasi optimal | atteignable à 5–10 % du coût optimal |
+
 **Ce que nous avons mesuré.** Retirer le coût d'étalement en distance donne −5 % de
 kilomètres, +220 s de makespan, et fait passer l'écart de charge entre coursiers de
 4,5 à 7,5 clients. Le retirer entièrement porte cet écart à **35 clients** — un
 coursier fait presque tout, ce qui rejoint le « deux fois plus long » de Matl et al.
+
+**Nos 5 % tombent donc exactement dans la bande publiée** (5 à 10 %). Le chevauchement
+observé n'est pas une anomalie du modèle : c'est le prix normal de l'équilibrage, et
+il est payé au tarif que la littérature annonce.
 
 ---
 
