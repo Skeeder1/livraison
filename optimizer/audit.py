@@ -13,10 +13,23 @@ plausibles.
 Les contrôles reposent sur des propriétés démontrables plutôt que sur une
 impression :
 
-* **Croisement interne.** Une tournée euclidienne optimale ne se recoupe jamais.
-  Si deux segments d'un même véhicule se croisent, inverser la portion comprise
-  entre eux raccourcit strictement le trajet — c'est le mouvement 2-opt. Un
-  croisement est donc une preuve de sous-optimalité, pas une opinion.
+* **Croisement interne.** Une tournée euclidienne optimale ne se recoupe jamais
+  (Flood, *The Traveling-Salesman Problem*, Operations Research, 1956). Si deux
+  segments d'un même véhicule se croisent, inverser la portion comprise entre eux
+  raccourcit strictement le trajet — c'est le mouvement 2-opt. Un croisement est
+  donc une preuve de sous-optimalité, pas une opinion.
+
+  **La preuve tient à la métrique**, et il faut le savoir avant de s'y fier : elle
+  repose sur l'inégalité triangulaire stricte le long de segments droits. Elle vaut
+  tant que le solveur minimise des distances euclidiennes, ce qui est le cas
+  aujourd'hui. Le jour où la matrice viendra du réseau routier, deux tronçons
+  pourront se croiser à l'écran sans que la tournée soit améliorable : le
+  croisement redeviendra un indice, comme celui entre deux véhicules.
+
+* **Croisement entre tournées.** Contrairement au cas précédent, rien n'interdit à
+  deux véhicules de se croiser dans une solution optimale : la capacité et les
+  fenêtres de temps peuvent l'imposer. C'est un indice de découpage discutable,
+  jamais une preuve.
 * **2-opt et relocalisation résiduels.** On énumère tous les mouvements et on
   compte ceux qui raccourcissent encore. Une recherche convergée n'en laisse
   presque aucun ; il en reste beaucoup lorsque le budget a manqué.
@@ -264,7 +277,7 @@ def afficher(tour: dict[str, Any], rapport: dict[str, Any], avec_carte: bool) ->
         print("  change les heures d'arrivée : les mouvements comptés ci-dessous raccourcissent")
         print("  la distance, mais certains seraient infaisables. À lire comme une borne haute.")
     print(f"\n  croisements internes    {g['croisements_internes_total']}"
-          f"   (preuve de sous-optimalité : un 2-opt les supprime)")
+          f"   (preuve de sous-optimalité en métrique euclidienne)")
     print(f"  croisements entre véh.  {g['croisements_entre_tournees']}"
           f"   (indice, pas preuve : les contraintes peuvent l'imposer)")
     print(f"  2-opt encore possibles  {g['deux_opt_restants_total']}"

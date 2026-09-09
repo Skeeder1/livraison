@@ -311,7 +311,30 @@ def add_routing_dimensions(routing, manager, data, vehicle_capacities, vehicle_m
     time = 'Time'
     routing.AddDimensionWithVehicleCapacity(time_evaluator_index, data['vehicle_max_time'], vehicle_max_times, False, time)
     time_dimension = routing.GetDimensionOrDie(time)
-    # Minimize makespan and balance route times to prevent extreme time differences
+
+    # `SetGlobalSpanCostCoefficient` coûte, d'après la documentation d'OR-Tools,
+    # `coefficient x (max(cumul de fin) - min(cumul de départ))`. C'est donc une
+    # ÉTENDUE, et non un min-max — sauf si tous les départs valent la même chose,
+    # auquel cas le terme se réduit à `coefficient x max(fin)`.
+    #
+    # C'est le cas ici, et seulement par convention : chaque véhicule reçoit
+    # `Config.START_TIME_MIN` comme heure de départ, la même pour tous. Mesuré
+    # sur le scénario de référence, les cumuls de départ valent [0, 0, 0] sur les
+    # trois dimensions portant un coût d'étalement.
+    #
+    # L'invariant est fragile et mérite d'être écrit : **échelonner les heures de
+    # départ transformerait silencieusement ce terme en mesure d'étendue.** Or
+    # Matl, Hartl & Vidal (Workload Equity in Vehicle Routing Problems,
+    # Transportation Science, 2018) montrent que sur une métrique à somme
+    # variable comme la durée, les mesures non monotones — l'étendue en est une —
+    # produisent des tournées qui ne sont même pas optimales au sens du TSP :
+    # moins de 20 % des solutions Pareto-optimales le sont dans leur étude. Le
+    # min-max, lui, fait partie des mesures qu'ils recommandent.
+    #
+    # Autrement dit, le modèle applique aujourd'hui la bonne mesure par accident
+    # de configuration. Si les départs devaient différer, il faudrait remplacer ce
+    # terme par une borne souple sur la fin de chaque véhicule
+    # (`SetCumulVarSoftUpperBound`), qui reste monotone.
     time_dimension.SetGlobalSpanCostCoefficient(Config.TIME_SPAN_COEFFICIENT)
 
     return (distance_dimension, capacity_dimension, time_dimension,
