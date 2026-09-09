@@ -192,11 +192,21 @@ def display_detailed_results(data, routes, estimated_times, current_loads, remai
 
 def get_activated_hubs(data: dict[str, Any], manager: pywrapcp.RoutingIndexManager, routing: pywrapcp.RoutingModel, solution: pywrapcp.Assignment) -> set:
     """
-    Détecte les hubs activés (utilisés) dans la solution.
-    
-    Un hub est considéré comme activé si :
-    - Le nœud hub original est visité (ActiveVar == 1)
-    - OU l'un de ses points de dépôt/ramassage est utilisé pour les transferts
+    Détecte les hubs où un transfert entre coursiers a réellement eu lieu.
+
+    Un hub compte comme activé lorsque **son dépôt et son retrait sont tous
+    deux desservis** : c'est la définition d'un échange de colis.
+
+    Le simple passage par le nœud de hub d'origine ne compte pas. Ce nœud porte
+    une demande nulle et une disjonction bon marché : le solveur le traverse
+    parfois comme un point de passage ordinaire, sans rien y déposer. L'ancienne
+    règle — « activé si le nœud du hub est visité OU si l'un des deux nœuds de
+    la paire l'est » — comptait donc des survols comme des transferts, et
+    faisait passer pour un rendez-vous ce qui n'était qu'un détour. Les survols
+    restent rapportés séparément, sous `hubFlybys`.
+
+    La disjonction « l'un OU l'autre » était de surcroît impossible depuis que
+    les deux activations sont liées : c'est les deux nœuds ou aucun.
     
     :param data: Dictionnaire de données du problème
     :param manager: Gestionnaire de routage OR-Tools
@@ -205,33 +215,17 @@ def get_activated_hubs(data: dict[str, Any], manager: pywrapcp.RoutingIndexManag
     :return: Set contenant les indices des hubs activés
     """
     activated_hubs = set()
-    hub_start = 1 + data['num_customers']  # Premier index des hubs
-    
+    deposits = data.get('hub_deposits') or []
+    pickups = data.get('hub_pickups') or []
+
     for h in range(data['num_hubs']):
-        activated = False
-        
-        # Vérifier le nœud hub original
-        hub_node = hub_start + h
-        hub_index = manager.NodeToIndex(hub_node)
-        # Un hub est activé si la variable ActiveVar est à 1 (nœud visité)
-        if solution.Value(routing.ActiveVar(hub_index)) == 1:
-            activated = True
-            
-        # Vérifier également les dépôts et pickups si disponibles 
-        # (pour les transferts entre véhicules via hubs)
-        if 'hub_deposits' in data and 'hub_pickups' in data:
-            if h < len(data['hub_deposits']):
-                deposit = data['hub_deposits'][h]  # Point de dépôt au hub
-                pickup = data['hub_pickups'][h]    # Point de ramassage au hub
-                dep_index = manager.NodeToIndex(deposit)
-                pick_index = manager.NodeToIndex(pickup)
-                # Hub activé si dépôt OU ramassage est utilisé
-                if solution.Value(routing.ActiveVar(dep_index)) == 1 or solution.Value(routing.ActiveVar(pick_index)) == 1:
-                    activated = True
-                    
-        if activated:
+        if h >= len(deposits) or h >= len(pickups):
+            continue
+        depose = solution.Value(routing.ActiveVar(manager.NodeToIndex(deposits[h])))
+        collecte = solution.Value(routing.ActiveVar(manager.NodeToIndex(pickups[h])))
+        if depose == 1 and collecte == 1:
             activated_hubs.add(h)
-            
+
     return activated_hubs
 
 
