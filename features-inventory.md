@@ -38,6 +38,17 @@ tests. À tenir à jour à chaque fonctionnalité terminée.
 | Capture de la démonstration en images et vidéo | `tools/capture_demo.py` | manuel |
 | Analyses comparatives paramétriques | `optimizer.stats` | manuel |
 
+## Interface web (`web/`)
+
+| Fonctionnalité | Point d'entrée | Tests |
+|---|---|---|
+| Rejeu animé d'une tournée sur carte Leaflet, composant React réutilisable | `web/src/DeliveryReplay.tsx` | manuel (`cd web && npm run dev`) |
+| Contrat de tournée côté client et vérification des invariants avant rendu | `web/src/tour.ts` (`validateTour`) | `npm run typecheck` |
+| Client du solveur, endpoint configurable, réponse toujours validée | `web/src/solve.ts` (`createSolve`) | manuel |
+| Solveur simulé en navigateur, pour développer sans backend | `web/src/mock-solver.ts` | manuel |
+| Libellés en / fr du rejeu | `web/src/strings.ts` (`demoStrings`) | manuel |
+| Page de démonstration autonome (remplace `vrp_visualization.html`) | `web/demo/main.tsx` | manuel (`npm run build:demo`) |
+
 ## API
 
 | Fonctionnalité | Point d'entrée | Tests |

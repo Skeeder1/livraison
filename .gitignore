@@ -158,6 +158,8 @@ dmypy.json
 # Visualization outputs
 *.html
 !optimizer/visualization/interface.html
+# La page de démo du paquet web est du code source, pas un artefact généré.
+!web/demo/index.html
 
 # VS Code
 .vscode/
