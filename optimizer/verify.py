@@ -26,6 +26,19 @@ from pathlib import Path
 from typing import Any
 
 TOLERANCE_METRES = 2.0
+
+#: Tolérance de raccrochage au réseau routier, en mètres.
+#:
+#: OSRM projette chaque point sur la voie la plus proche : un client situé à une
+#: adresse d'immeuble se retrouve sur la rue, à quelques dizaines de mètres.
+#: L'extrémité d'un tracé routier ne coïncide donc pas avec la position du
+#: client, et exiger deux mètres y signalait un défaut inexistant — mesuré de 13
+#: à 72 mètres sur une tournée parisienne parfaitement valide.
+#:
+#: La borne reste assez serrée pour attraper ce qu'on veut vraiment attraper :
+#: un segment rattaché au mauvais arrêt, qui se compterait en centaines de
+#: mètres au minimum.
+TOLERANCE_RACCROCHAGE_M = 150.0
 TOLERANCE_SECONDES = 1
 
 
@@ -184,13 +197,20 @@ def verifier_tournee(tour: dict[str, Any], instance: dict[str, Any] | None = Non
                f"recalculé {total_m / 1000:.1f} km, annoncé {stats['roadKm']} km")
 
     # Les extrémités d'un segment sont les arrêts qu'il relie.
-    extremites_fausses = [
-        (v["id"], i) for v in vehicules for i, seg in enumerate(v["legs"])
-        if haversine_m(seg["pts"][0], (v["stops"][i]["lat"], v["stops"][i]["lng"])) > TOLERANCE_METRES
-        or haversine_m(seg["pts"][-1], (v["stops"][i + 1]["lat"], v["stops"][i + 1]["lng"])) > TOLERANCE_METRES
-    ]
-    r.verifier(not extremites_fausses, "chaque segment relie bien les deux arrêts qu'il borne",
-               f"{extremites_fausses[:3]}")
+    # Un tracé routier est raccroché au réseau, un tracé droit ne l'est pas : la
+    # tolérance suit donc la nature du segment.
+    extremites_fausses = []
+    for v in vehicules:
+        for i, seg in enumerate(v["legs"]):
+            marge = TOLERANCE_RACCROCHAGE_M if seg.get("road") else TOLERANCE_METRES
+            depart = haversine_m(seg["pts"][0], (v["stops"][i]["lat"], v["stops"][i]["lng"]))
+            arrivee = haversine_m(seg["pts"][-1],
+                                  (v["stops"][i + 1]["lat"], v["stops"][i + 1]["lng"]))
+            if depart > marge or arrivee > marge:
+                extremites_fausses.append((v["id"], i, round(depart), round(arrivee)))
+    r.verifier(not extremites_fausses,
+               "chaque segment relie bien les deux arrêts qu'il borne",
+               f"écarts en mètres : {extremites_fausses[:3]}")
 
     # ── Rendez-vous entre coursiers ────────────────────────────────
     _verifier_transferts(tour, r)
