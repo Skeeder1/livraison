@@ -37,6 +37,7 @@ dev = [
 [project.scripts]
 cvrptw-solve = "optimizer.main:main"
 cvrptw-verify = "optimizer.verify:main"
+cvrptw-audit = "optimizer.audit:main"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
