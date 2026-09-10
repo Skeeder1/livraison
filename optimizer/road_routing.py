@@ -112,14 +112,37 @@ DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".c
 #: Conservé pour les appelants qui l'importaient. Utiliser `cache_dir()`, qui
 #: relit l'environnement à chaque appel.
 CACHE_DIR = DEFAULT_CACHE_DIR
+#: Patience accordée à une requête de **géométrie**, en secondes.
+#:
+#: La géométrie est cosmétique : sans elle `tour_format` trace une droite et
+#: marque `legs[].road` à faux. Une tournée reste juste. Mesuré sur le serveur
+#: de FOSSGIS, six itinéraires successifs à une seconde d'intervalle : 0,22 à
+#: 0,45 s chacun, sans pénalité de débit. Une patience courte suffit donc, et
+#: c'est elle qui protège le budget d'une requête qui traîne.
 REQUEST_TIMEOUT = 30
+
+#: Patience accordée à la requête de **matrice**, en secondes.
+#:
+#: Séparée de la précédente parce que les deux ne pèsent pas la même chose : la
+#: matrice décide de la tournée, la géométrie ne fait que la dessiner. Perdre la
+#: matrice fait retomber tout le problème sur des distances à vol d'oiseau, donc
+#: sur une ville sans rues ; perdre un tracé ne coûte qu'une ligne droite.
+#:
+#: Le chiffre vient de la mesure, et il est nettement plus élevé qu'on ne
+#: l'attendrait. Une matrice de 65 points est facturée par le limiteur du serveur
+#: comme les 4 225 itinéraires qu'elle représente : la première rend en 0,38 à
+#: 0,49 s, les suivantes à une seconde d'intervalle en **8,9 à 10,0 s**, puis le
+#: serveur répond 429. Une patience de deux secondes — ce que le budget de six
+#: secondes donnait à trois véhicules — jetait donc une réponse correcte qui
+#: était simplement en train d'arriver.
+TABLE_TIMEOUT = 20
 
 #: Vitesse retenue pour combler un couple qu'OSRM ne sait pas relier, en m/s.
 #: 20 km/h, l'ordre de grandeur d'un vélo cargo en ville.
 VITESSE_DE_REPLI_M_PAR_S = 20_000 / 3600
 
 
-def _ouvrir(url):
+def _ouvrir(url, *, timeout_matrice=False):
     """
     Effectue une requête vers le serveur de routage, en respectant ses règles.
 
@@ -130,6 +153,10 @@ def _ouvrir(url):
 
     L'attente est faite avant l'appel et non après : deux requêtes séparées
     naturellement par un long calcul ne paient rien.
+
+    :param timeout_matrice: Applique `TABLE_TIMEOUT` plutôt que
+        `REQUEST_TIMEOUT`. Une matrice et un tracé ne méritent pas la même
+        patience, cf. les deux constantes.
     """
     global _derniere_requete
     depuis = time.monotonic() - _derniere_requete
@@ -137,7 +164,9 @@ def _ouvrir(url):
         time.sleep(INTERVALLE_MINIMAL_S - depuis)
     _derniere_requete = time.monotonic()
     requete = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    return urllib.request.urlopen(requete, timeout=REQUEST_TIMEOUT)
+    return urllib.request.urlopen(
+        requete, timeout=TABLE_TIMEOUT if timeout_matrice else REQUEST_TIMEOUT
+    )
 
 
 def cache_dir():
@@ -332,7 +361,7 @@ def fetch_table(locations):
     url = f"{OSRM_BASE_URL}/table/v1/{OSRM_PROFILE}/{coords}?annotations=duration,distance"
 
     try:
-        with _ouvrir(url) as response:
+        with _ouvrir(url, timeout_matrice=True) as response:
             payload = json.load(response)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
         raise TableIndisponible(f"OSRM injoignable : {exc}") from exc

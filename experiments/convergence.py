@@ -83,7 +83,7 @@ def trajectoire(
     seed: int,
     budget_seconds: int,
     road_matrix: bool,
-) -> list[tuple[int, int]]:
+) -> tuple[list[tuple[int, int]], bool]:
     """
     Résout une instance et rend la suite ``(date_ms, objectif)`` des solutions.
 
@@ -92,9 +92,18 @@ def trajectoire(
     boucle de recherche, et tout ce qu'il consomme est pris sur le budget qu'il
     sert à mesurer.
 
-    :return: Couples ``(millisecondes depuis le départ, objectif)``, dans
-        l'ordre où le solveur les a rendus — suite **non décroissante**, cf. le
-        docstring du module.
+    :return: Le couple ``(points, routiere)``. `points` est la suite
+        ``(millisecondes depuis le départ, objectif)`` dans l'ordre où le
+        solveur les a rendus — suite **non décroissante**, cf. le docstring du
+        module. `routiere` dit si la matrice routière a réellement été obtenue.
+
+        Ce second drapeau n'est pas décoratif. `create_toy_data` retombe
+        silencieusement sur les distances euclidiennes quand le serveur de
+        routage refuse la requête — un HTTP 429 suffit — et ne le signale que
+        par une ligne sur la sortie standard. Une campagne qui ne le consigne
+        pas mélange donc, sans que rien ne le montre, des mesures routières et
+        des mesures à vol d'oiseau. C'est arrivé, et c'est ce qui a coûté une
+        campagne.
     """
     saved = {key: getattr(Config, key) for key in CONFIG_KEYS}
     try:
@@ -122,7 +131,7 @@ def trajectoire(
                 )
 
             solve_vrp(data, on_solution=observer)
-            return points
+            return points, data.get("time_matrix") is not None
     finally:
         Config.update(**saved)
 
@@ -202,6 +211,70 @@ def cle(run: dict[str, Any]) -> tuple[int, int, int]:
     return (run["customers"], run["vehicles"], run["seed"])
 
 
+def analyser(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Résume une campagne : par taille et par flotte, quand la recherche s'arrête.
+
+    Deux chiffres par cellule, et ils ne disent pas la même chose :
+
+    * la **dernière amélioration**, date au-delà de laquelle plus rien ne bouge.
+      C'est le temps qu'il aurait fallu donner pour obtenir exactement la même
+      tournée ;
+    * le **coude à 1 %**, date à partir de laquelle l'objectif est déjà à moins
+      de 1 % de sa valeur finale. C'est le temps qu'il faut donner pour obtenir
+      une tournée qu'on ne saurait distinguer de la meilleure.
+
+    Le second est ce qu'un bouton « temps optimal » doit viser : le premier
+    achète une décimale.
+
+    Le résumé retient le **quantile 0,9** sur les graines, pas la moyenne. Un
+    budget doit couvrir la plupart des instances de cette taille, pas l'instance
+    moyenne — la moitié des visiteurs seraient sinon servis par une recherche
+    coupée trop tôt.
+    """
+    import statistics
+
+    melange = {row.get("matrice_routiere_obtenue") for row in rows}
+    if len(melange) > 1:
+        raise ValueError(
+            "le journal mélange des mesures routières et euclidiennes : "
+            "les résumer ensemble n'aurait aucun sens"
+        )
+
+    cellules: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    for row in rows:
+        cellules.setdefault((row["customers"], row["vehicles"]), []).append(row)
+
+    def quantile(valeurs: list[int], q: float) -> int:
+        ordonnees = sorted(valeurs)
+        if len(ordonnees) == 1:
+            return ordonnees[0]
+        rang = q * (len(ordonnees) - 1)
+        bas = int(rang)
+        haut = min(bas + 1, len(ordonnees) - 1)
+        return round(ordonnees[bas] + (ordonnees[haut] - ordonnees[bas]) * (rang - bas))
+
+    resume = {}
+    for (clients, vehicules), lignes in sorted(cellules.items()):
+        derniere = [ligne["derniere_amelioration_ms"] for ligne in lignes]
+        coude1 = [ligne["coude_1pct_ms"] for ligne in lignes]
+        resume[f"{clients}c/{vehicules}v"] = {
+            "graines": len(lignes),
+            "derniere_amelioration_ms": {
+                "mediane": round(statistics.median(derniere)),
+                "q90": quantile(derniere, 0.9),
+                "max": max(derniere),
+            },
+            "coude_1pct_ms": {
+                "mediane": round(statistics.median(coude1)),
+                "q90": quantile(coude1, 0.9),
+                "max": max(coude1),
+            },
+            "budget_ms": lignes[0]["budget_seconds"] * 1000,
+        }
+    return resume
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     parser.add_argument("--out", type=Path, default=Path("experiments/out/convergence.jsonl"))
@@ -216,7 +289,30 @@ def main(argv: list[str] | None = None) -> int:
         help="Mesure à vol d'oiseau. Par défaut la matrice routière, "
         "c'est-à-dire ce que résout la démonstration en production.",
     )
+    parser.add_argument(
+        "--analyser",
+        action="store_true",
+        help="N'exécute rien : résume le journal existant et sort.",
+    )
     args = parser.parse_args(argv)
+
+    if args.analyser:
+        rows = read_rows(args.out)
+        if not rows:
+            print(f"aucune mesure dans {args.out}")
+            return 1
+        resume = analyser(rows)
+        largeur = max(len(cle) for cle in resume)
+        print(f"{len(rows)} exécutions, budget {rows[0]['budget_seconds']} s\n")
+        print(f"{'instance':<{largeur}}  {'dernière amélioration (ms)':>28}  {'coude 1 % (ms)':>24}")
+        print(f"{'':<{largeur}}  {'médiane':>9}{'q90':>9}{'max':>10}  {'médiane':>8}{'q90':>8}{'max':>8}")
+        for cle_cellule, valeurs in resume.items():
+            d, c = valeurs["derniere_amelioration_ms"], valeurs["coude_1pct_ms"]
+            print(
+                f"{cle_cellule:<{largeur}}  {d['mediane']:>9}{d['q90']:>9}{d['max']:>10}"
+                f"  {c['mediane']:>8}{c['q90']:>8}{c['max']:>8}"
+            )
+        return 0
 
     road_matrix = not args.euclidien
     a_faire = plan(args.tailles, args.vehicules, args.graines)
@@ -238,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
     with ResultStore(args.out) as store:
         for numero, run in enumerate(restant, start=1):
             depart = time.monotonic()
-            points = trajectoire(
+            points, routiere = trajectoire(
                 customers=run["customers"],
                 vehicles=run["vehicles"],
                 capacity=args.capacity,
@@ -253,6 +349,8 @@ def main(argv: list[str] | None = None) -> int:
                 "capacity": args.capacity,
                 "budget_seconds": args.budget,
                 "road_matrix": road_matrix,
+                # Ce qui a réellement servi, et non ce qui a été demandé.
+                "matrice_routiere_obtenue": routiere,
                 "solutions": len(points),
                 "ameliorations": len(ameliorants),
                 "objectif_final": ameliorants[-1][1] if ameliorants else None,
@@ -266,6 +364,13 @@ def main(argv: list[str] | None = None) -> int:
                 "modele_sha": sha,
                 "python": platform.python_version(),
             }
+            if road_matrix and not routiere:
+                print(
+                    "   ⚠️  matrice routière refusée : mesure ignorée, "
+                    "elle sera reprise à la reprise de la campagne",
+                    flush=True,
+                )
+                continue
             store.append(ligne)
             print(
                 f"[{numero}/{len(restant)}] {run['customers']} clients, "
