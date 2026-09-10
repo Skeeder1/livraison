@@ -41,6 +41,9 @@ export interface DemoStrings {
     seconds: string;
     minutes: string;
     auto: string;
+    rerun: string;
+    rerunHint: string;
+    fromBaked: string;
     autoChosen: string;
     autoInfoLabel: string;
     autoInfoTitle: string;
@@ -147,6 +150,9 @@ const en: DemoStrings = {
     seconds: '{n} s',
     minutes: '{n} min',
     auto: 'Fitted',
+    rerun: 'Run the solver',
+    rerunHint: 'Search this instance again instead of reading the stored answer.',
+    fromBaked: 'Read from the pre-solved set — no search ran.',
     autoChosen: 'Fitted: {n} s for {customers} customers',
     autoInfoLabel: 'What a search budget buys',
     autoInfoTitle: 'Fitted to the instance',
@@ -270,6 +276,9 @@ const fr: DemoStrings = {
     seconds: '{n} s',
     minutes: '{n} min',
     auto: 'Ajusté',
+    rerun: 'Lancer le solveur',
+    rerunHint: 'Rechercher à nouveau cette instance au lieu de lire la réponse enregistrée.',
+    fromBaked: 'Lu dans le jeu pré-résolu — aucune recherche n\'a tourné.',
     autoChosen: 'Ajusté : {n} s pour {customers} clients',
     autoInfoLabel: 'Ce qu\'achète un budget de recherche',
     autoInfoTitle: 'Ajusté à l\'instance',

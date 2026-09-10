@@ -15,6 +15,7 @@ import type { Tour, Vehicle } from './tour';
 import {
   BUDGET_CHOICES,
   budgetForInstance,
+  isBaked,
   CAPACITY,
   CUSTOMERS,
   DEFAULT_PARAMS,
@@ -398,6 +399,11 @@ export default function DeliveryReplay({
   /** Whether the fitted budget's explanation is showing. Hover opens it, and a
    *  click latches it, so a touch device — which has no hover — can read it. */
   const [budgetInfo, setBudgetInfo] = useState(false);
+  /** Whether the round on screen was read from the pre-solved set rather than
+   *  searched just now. Drives the "run the solver" action and the note that
+   *  says no search ran — a visitor should never be left thinking a stored
+   *  answer was computed for them. */
+  const [showingBaked, setShowingBaked] = useState(false);
   const [solveSeconds, setSolveSeconds] = useState(0);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [swapping, setSwapping] = useState(false);
@@ -1234,7 +1240,13 @@ export default function DeliveryReplay({
     [reducedMotion, setPlayback]
   );
 
-  const runSolve = useCallback(async () => {
+  /** Runs one solve.
+   *
+   *  `force` is what the "run the solver" action passes: it skips the
+   *  pre-solved corpus so the search actually happens. Without it, a fitted
+   *  configuration that has been baked returns instantly from a static file,
+   *  which is the point — exploring the panel should cost nothing. */
+  const runSolve = useCallback(async (force = false) => {
     if (abortRef.current) return;
 
     setFailure(null);
@@ -1256,7 +1268,8 @@ export default function DeliveryReplay({
     const asked = params;
 
     try {
-      const next = await solve(asked, controller.signal);
+      const next = await solve(asked, controller.signal, { force });
+      setShowingBaked(isBaked(next));
       showTour(next, asked);
       setReady(true);
     } catch (cause) {
@@ -1280,6 +1293,7 @@ export default function DeliveryReplay({
   const showReference = useCallback(() => {
     setFailure(null);
     setReady(false);
+    setShowingBaked(false);
     showTour(reference, null);
   }, [showTour, reference]);
 
@@ -1529,6 +1543,12 @@ export default function DeliveryReplay({
                       .replace('{elapsed}', String(solveSeconds))
                       .replace('{budget}', String(params.budgetSeconds))}
                   </span>
+                )}
+                {/* Said plainly, because the alternative is letting a visitor
+                    believe a search ran for them when a static file answered.
+                    The round is real either way — it was solved, just earlier. */}
+                {!solving && showingBaked && (
+                  <span className="dr-banner-meta">{strings.solve.fromBaked}</span>
                 )}
               </span>
               {solving && (
@@ -1853,12 +1873,28 @@ export default function DeliveryReplay({
             <button
               type="button"
               className="dr-btn dr-btn--primary"
-              onClick={runSolve}
+              onClick={() => runSolve()}
               disabled={solving || blocked}
             >
               <Sparkles size={15} aria-hidden="true" />
               <span>{strings.solve.run}</span>
             </button>
+
+            {/* Only offered once the round on screen came out of the pre-solved
+                set. Before that there is nothing to re-run, and a permanent
+                second button would suggest the first one had not really solved
+                anything. */}
+            {showingBaked && !solving && (
+              <button
+                type="button"
+                className="dr-btn"
+                onClick={() => runSolve(true)}
+                disabled={blocked}
+                title={strings.solve.rerunHint}
+              >
+                <span>{strings.solve.rerun}</span>
+              </button>
+            )}
 
             <button
               type="button"

@@ -122,11 +122,17 @@ export const DEFAULT_PARAMS: SolveParams = {
   hubs: 0,
   capacity: 10,
   timeWindows: false,
-  budgetMode: 'fixed',
+  // Fitted by default. Two reasons, and the second is the stronger: it is the
+  // budget the measurements say this instance needs, and it is the only mode the
+  // pre-solved corpus can answer — so a first click returns a real tour
+  // instantly, spends no CPU, and costs the demo's daily budget nothing.
+  budgetMode: 'fitted',
   // Ni le minimum ni le maximum : à 5 s la recherche n'a pas convergé, et la
   // comparaison avec la tournée de référence accablerait le solveur pour une
   // raison qui tient au budget et non au modèle.
-  budgetSeconds: 15,
+  // Kept in step with `budgetMode` above: this is what `budgetForInstance`
+  // returns for 45 customers, so the panel is honest before anything is solved.
+  budgetSeconds: 30,
 };
 
 /** Wall-clock slack on top of the search budget before the client gives up.
@@ -184,7 +190,18 @@ function codeForStatus(status: number): SolveErrorCode {
 
 export const SOLVE_ENDPOINT = '/api/solve';
 
-export type SolveFn = (params: SolveParams, signal: AbortSignal) => Promise<Tour>;
+/** `force` skips the pre-solved corpus and makes the solver run. It is what the
+ *  "run the solver" action passes, and the only way to get a fresh search for a
+ *  configuration that is already baked. */
+export interface SolveRunOptions {
+  force?: boolean;
+}
+
+export type SolveFn = (
+  params: SolveParams,
+  signal: AbortSignal,
+  options?: SolveRunOptions,
+) => Promise<Tour>;
 
 const postSolve =
   (endpoint: string): SolveFn =>
@@ -243,6 +260,61 @@ export interface SolveOptions {
   reference?: Tour;
 }
 
+/** Where the pre-solved corpus is served from. Written by
+ *  `scripts/bake-delivery-configs.py` in the portfolio, one file per
+ *  configuration. */
+const BAKED_BASE = '/demos/delivery/baked';
+
+/** Filename for one configuration's pre-solved tour.
+ *
+ *  Mirrors `cle()` in `scripts/bake-delivery-configs.py`, including the rule
+ *  that a single courier cannot use a hub: a hub exists so two couriers can hand
+ *  parcels over, so the endpoint drops the hubs in that case and the key has to
+ *  drop them too, or a visitor asking for one courier and two hubs would read a
+ *  different tour depending on where it came from.
+ *
+ *  `budgetSeconds` is deliberately absent. Every baked tour was solved at the
+ *  fitted budget, so the corpus may only answer a request that asked for the
+ *  fitted budget. Putting the budget in the key would suggest the corpus covers
+ *  the four fixed durations, which it does not. */
+export function bakedKey(params: SolveParams): string {
+  const hubs = params.vehicles === 1 ? 0 : params.hubs;
+  return `c${params.customers}-v${params.vehicles}-h${hubs}-k${params.capacity}-tw${
+    params.timeWindows ? 1 : 0
+  }`;
+}
+
+/** True when this tour came out of the pre-solved corpus rather than a solver
+ *  run just now. Read from the document, so it cannot disagree with it. */
+export function isBaked(tour: Tour): boolean {
+  return Boolean((tour.meta as Record<string, unknown> | undefined)?.baked);
+}
+
+/** Fetches the pre-solved tour for a configuration, or `null` if there is none.
+ *
+ *  A missing configuration is a 404 and nothing more: the corpus is built in
+ *  priority order and is useful at every prefix, so "not baked yet" is a normal
+ *  state rather than a fault. That is also why there is no manifest — the
+ *  presence of the file IS the manifest. A malformed or truncated file is
+ *  treated like a missing one: fall through to the solver rather than show a
+ *  broken round. */
+async function fetchBaked(params: SolveParams, signal: AbortSignal): Promise<Tour | null> {
+  let response: Response;
+  try {
+    response = await fetch(`${BAKED_BASE}/${bakedKey(params)}.json`, { signal });
+  } catch (cause) {
+    if ((cause as Error)?.name === 'AbortError') throw cause;
+    return null;
+  }
+  if (!response.ok) return null;
+  try {
+    const tour = (await response.json()) as Tour;
+    return validateTour(tour) ? null : tour;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Builds a solver. It runs one solve and guarantees the result is safe to
  * render: both paths go through `validateTour`, so a solver that regresses its
@@ -252,7 +324,16 @@ export function createSolve(options: SolveOptions = {}): SolveFn {
   const endpoint = options.endpoint ?? SOLVE_ENDPOINT;
   const reference = options.reference;
 
-  return async (params, signal) => {
+  return async (params, signal, runOptions) => {
+    // The corpus only answers for the fitted budget, and only when the visitor
+    // has not asked for a fresh run. Serving a baked 30 s tour to someone who
+    // picked "5 s" would answer a question they did not ask, and the delta card
+    // would compare against a budget that was never spent.
+    if (params.budgetMode === 'fitted' && !runOptions?.force && !options.mock) {
+      const baked = await fetchBaked(params, signal);
+      if (baked) return baked;
+    }
+
     let tour: Tour;
     if (options.mock) {
       if (!reference) {
