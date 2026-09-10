@@ -80,10 +80,70 @@ USER_AGENT = os.environ.get(
 #: cette attente, une seule résolution suffirait à dépasser le débit autorisé.
 INTERVALLE_MINIMAL_S = float(os.environ.get("OSRM_MIN_INTERVAL", "1.0"))
 
-#: Date de la dernière requête, pour tenir l'intervalle. Un flottant de module
-#: plutôt qu'un verrou : `solve_scenario` n'est de toute façon pas sûre en
-#: concurrence dans un même processus et ses appelants la sérialisent déjà.
+#: Date de la dernière requête, pour tenir l'intervalle, à l'échelle du
+#: processus. Un flottant de module suffit ici : `solve_scenario` n'est de toute
+#: façon pas sûre en concurrence dans un même processus et ses appelants la
+#: sérialisent déjà.
 _derniere_requete = 0.0
+
+#: Fichier de rendez-vous entre **processus**, quand il y en a plusieurs.
+#:
+#: Le compteur ci-dessus est une variable de module : quatre processus en ont
+#: quatre exemplaires, donc quatre requêtes par seconde là où le serveur en
+#: autorise une. Le débit n'est pas une propriété de notre programme, c'est une
+#: obligation envers un service tiers, et elle ne se divise pas entre les
+#: processus qui s'en servent.
+#:
+#: Le verrou n'existe que si `OSRM_THROTTLE_FILE` est posée. Une exécution
+#: unique — le cas courant — ne paie donc ni ouverture de fichier ni `flock`, et
+#: le pré-calcul en parallèle la pose pour tous ses ouvriers.
+FICHIER_ETRANGLEMENT = os.environ.get("OSRM_THROTTLE_FILE")
+
+
+def _attendre_son_tour():
+    """
+    Fait respecter l'intervalle minimal, entre processus s'il le faut.
+
+    Le fichier porte la date de la dernière requête émise par n'importe quel
+    processus, en secondes depuis l'époque — et non `time.monotonic()`, dont
+    l'origine est propre à chaque processus et n'est donc pas comparable.
+
+    Le verrou est tenu **pendant** l'attente, et pas seulement pendant la
+    lecture. C'est ce qui sérialise les ouvriers : le second lit la date du
+    premier, dort le temps qu'il faut, écrit la sienne, puis relâche. Sans cela
+    quatre ouvriers liraient la même date, dormiraient le même temps et
+    partiraient ensemble — exactement la rafale qu'on cherche à éviter.
+    """
+    if not FICHIER_ETRANGLEMENT:
+        global _derniere_requete
+        depuis = time.monotonic() - _derniere_requete
+        if depuis < INTERVALLE_MINIMAL_S:
+            time.sleep(INTERVALLE_MINIMAL_S - depuis)
+        _derniere_requete = time.monotonic()
+        return
+
+    import fcntl
+
+    chemin = FICHIER_ETRANGLEMENT
+    os.makedirs(os.path.dirname(chemin) or ".", exist_ok=True)
+    with open(chemin, "a+", encoding="utf-8") as verrou:
+        fcntl.flock(verrou.fileno(), fcntl.LOCK_EX)
+        try:
+            verrou.seek(0)
+            contenu = verrou.read().strip()
+            try:
+                precedente = float(contenu)
+            except ValueError:
+                precedente = 0.0
+            depuis = time.time() - precedente
+            if 0 <= depuis < INTERVALLE_MINIMAL_S:
+                time.sleep(INTERVALLE_MINIMAL_S - depuis)
+            verrou.seek(0)
+            verrou.truncate()
+            verrou.write(f"{time.time():.6f}")
+            verrou.flush()
+        finally:
+            fcntl.flock(verrou.fileno(), fcntl.LOCK_UN)
 
 #: Segment de profil dans le chemin de l'API. **Cosmétique** : `osrm-routed` sert
 #: le graphe sur lequel il a été démarré et ignore ce segment. C'est
@@ -149,7 +209,8 @@ def _ouvrir(url, *, timeout_matrice=False):
     Deux choses qu'aucun des deux appelants ne doit avoir à se rappeler : le
     `User-Agent` exigé, et l'intervalle d'une seconde entre deux requêtes. Les
     centraliser ici est ce qui garantit qu'elles s'appliquent aux itinéraires
-    comme à la matrice.
+    comme à la matrice — et, si `OSRM_THROTTLE_FILE` est posée, à tous les
+    processus à la fois.
 
     L'attente est faite avant l'appel et non après : deux requêtes séparées
     naturellement par un long calcul ne paient rien.
@@ -158,11 +219,7 @@ def _ouvrir(url, *, timeout_matrice=False):
         `REQUEST_TIMEOUT`. Une matrice et un tracé ne méritent pas la même
         patience, cf. les deux constantes.
     """
-    global _derniere_requete
-    depuis = time.monotonic() - _derniere_requete
-    if depuis < INTERVALLE_MINIMAL_S:
-        time.sleep(INTERVALLE_MINIMAL_S - depuis)
-    _derniere_requete = time.monotonic()
+    _attendre_son_tour()
     requete = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     return urllib.request.urlopen(
         requete, timeout=TABLE_TIMEOUT if timeout_matrice else REQUEST_TIMEOUT

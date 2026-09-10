@@ -16,6 +16,10 @@ import pytest
 
 from optimizer import road_routing
 
+#: Racine du dépôt, pour que les sous-processus du test d'étranglement importent
+#: le même `optimizer` que le reste de la suite.
+RACINE_DEPOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 WAYPOINTS = [(48.8566, 2.3522), (48.8584, 2.2945), (48.8606, 2.3376)]
 
 # Réponse OSRM minimale : deux segments de deux points chacun.
@@ -85,6 +89,56 @@ class TestEtranglement:
         envoye = osrm_repond[0].get_header("User-agent")
         assert envoye == road_routing.USER_AGENT
         assert "urllib" not in envoye.lower(), "le UA d'une bibliothèque est refusé"
+
+    def test_l_etranglement_tient_entre_processus(self, tmp_path):
+        """Le débit est une obligation envers un tiers, il ne se divise pas.
+
+        Le compteur de module a un exemplaire par processus : quatre ouvriers de
+        pré-calcul émettraient quatre requêtes par seconde là où le serveur en
+        autorise une. Avec `OSRM_THROTTLE_FILE`, ils se sérialisent.
+
+        Le test lance de vrais processus. Un test à un seul processus ne
+        prouverait rien : c'est précisément la frontière de processus que le
+        verrou doit franchir.
+        """
+        # ── ARRANGE ────────────────────────────────────────────────
+        import subprocess
+        import sys
+        import textwrap
+
+        verrou = tmp_path / "etranglement.lock"
+        programme = textwrap.dedent(
+            f"""
+            import sys, time
+            sys.path.insert(0, {str(RACINE_DEPOT)!r})
+            from optimizer import road_routing
+            for _ in range(2):
+                road_routing._attendre_son_tour()
+                print(time.time(), flush=True)
+            """
+        )
+        environnement = {**os.environ, "OSRM_THROTTLE_FILE": str(verrou)}
+
+        # ── ACT ────────────────────────────────────────────────────
+        ouvriers = [
+            subprocess.Popen(
+                [sys.executable, "-c", programme],
+                stdout=subprocess.PIPE, text=True, env=environnement,
+            )
+            for _ in range(3)
+        ]
+        dates = sorted(
+            float(ligne)
+            for ouvrier in ouvriers
+            for ligne in ouvrier.communicate()[0].split()
+        )
+
+        # ── ASSERT ─────────────────────────────────────────────────
+        assert len(dates) == 6, "les six requêtes doivent avoir été émises"
+        ecarts = [b - a for a, b in zip(dates, dates[1:], strict=False)]
+        assert all(ecart >= 0.95 for ecart in ecarts), (
+            f"deux requêtes trop rapprochées : {[round(e, 3) for e in ecarts]}"
+        )
 
     def test_deux_requetes_sont_espacees(self, osrm_repond, cache_temporaire, monkeypatch):
         """Une requête par seconde au plus : la géométrie est demandée une fois
