@@ -181,6 +181,33 @@ def coude(points: list[tuple[int, int]], budget_ms: int, tolerance: float) -> in
     return budget_ms
 
 
+def empreinte_machine() -> dict[str, Any]:
+    """
+    De quoi relire une mesure sans se tromper sur ce qu'elle vaut.
+
+    Un coude est une **durée**, donc une propriété de la machine autant que du
+    problème : la même instance converge deux fois plus tard sur un processeur
+    bridé à 1,3 GHz que sur le même processeur libre. Une campagne dont les
+    exécutions ne partagent pas le même profil de fréquence ne mesure rien du
+    tout, et rien dans les nombres ne le montrerait.
+
+    Le profil est donc consigné par ligne, et l'analyse refuse d'en mélanger
+    deux — au même titre qu'elle refuse de mélanger routier et euclidien.
+    """
+    profil = "inconnu"
+    try:
+        profil = subprocess.run(
+            ["powerprofilesctl", "get"], capture_output=True, text=True, check=True
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return {
+        "profil_energie": profil,
+        "processeur": platform.processor() or platform.machine(),
+        "python": platform.python_version(),
+    }
+
+
 def empreinte_modele() -> str:
     """SHA du dépôt au moment de la mesure, pour rattacher une ligne au code."""
     try:
@@ -239,6 +266,13 @@ def analyser(rows: list[dict[str, Any]]) -> dict[str, Any]:
         raise ValueError(
             "le journal mélange des mesures routières et euclidiennes : "
             "les résumer ensemble n'aurait aucun sens"
+        )
+
+    profils = {row.get("profil_energie") for row in rows}
+    if len(profils) > 1:
+        raise ValueError(
+            f"le journal mélange des profils de fréquence {sorted(profils)} : "
+            "un coude est une durée, donc dépendant de l'horloge"
         )
 
     cellules: dict[tuple[int, int], list[dict[str, Any]]] = {}
@@ -331,6 +365,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     sha = empreinte_modele()
+    machine = empreinte_machine()
+    print(f"machine : {machine['profil_energie']}, {machine['processeur']}", flush=True)
     with ResultStore(args.out) as store:
         for numero, run in enumerate(restant, start=1):
             depart = time.monotonic()
@@ -362,7 +398,7 @@ def main(argv: list[str] | None = None) -> int:
                 "trajectoire": ameliorants,
                 "duree_reelle_s": round(time.monotonic() - depart, 2),
                 "modele_sha": sha,
-                "python": platform.python_version(),
+                **machine,
             }
             if road_matrix and not routiere:
                 print(
