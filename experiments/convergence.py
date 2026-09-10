@@ -223,19 +223,33 @@ def empreinte_modele() -> str:
 
 
 def plan(
-    tailles: list[int], vehicules: list[int], graines: list[int]
+    tailles: list[int],
+    vehicules: list[int],
+    capacites: list[int],
+    graines: list[int],
 ) -> list[dict[str, int]]:
-    """Développe la grille en exécutions élémentaires, ordre déterministe."""
+    """
+    Développe la grille en exécutions élémentaires, ordre déterministe.
+
+    La capacité fait partie de la grille et non des constantes, parce que la
+    difficulté d'une instance ne tient pas au nombre de clients seul. Mesuré :
+    à 25 clients et 3 livreurs le coude à 1 % tombe à 609 ms, à 25 clients et
+    2 livreurs la médiane est à 768 ms mais le quantile 0,9 à 35 917 ms. Ce qui
+    change entre les deux, c'est le nombre de chargements que chaque véhicule
+    doit enchaîner. Une règle calibrée à capacité fixe ne couvrirait donc pas ce
+    que le panneau propose, qui va de 5 à 20.
+    """
     return [
-        {"customers": c, "vehicles": v, "seed": s}
+        {"customers": c, "vehicles": v, "capacity": k, "seed": s}
         for c in tailles
         for v in vehicules
+        for k in capacites
         for s in graines
     ]
 
 
-def cle(run: dict[str, Any]) -> tuple[int, int, int]:
-    return (run["customers"], run["vehicles"], run["seed"])
+def cle(run: dict[str, Any]) -> tuple[int, int, int, int]:
+    return (run["customers"], run["vehicles"], run["capacity"], run["seed"])
 
 
 def analyser(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -277,7 +291,9 @@ def analyser(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     cellules: dict[tuple[int, int], list[dict[str, Any]]] = {}
     for row in rows:
-        cellules.setdefault((row["customers"], row["vehicles"]), []).append(row)
+        cellules.setdefault(
+            (row["customers"], row["vehicles"], row["capacity"]), []
+        ).append(row)
 
     def quantile(valeurs: list[int], q: float) -> int:
         ordonnees = sorted(valeurs)
@@ -289,10 +305,11 @@ def analyser(rows: list[dict[str, Any]]) -> dict[str, Any]:
         return round(ordonnees[bas] + (ordonnees[haut] - ordonnees[bas]) * (rang - bas))
 
     resume = {}
-    for (clients, vehicules), lignes in sorted(cellules.items()):
+    for (clients, vehicules, capacite), lignes in sorted(cellules.items()):
         derniere = [ligne["derniere_amelioration_ms"] for ligne in lignes]
         coude1 = [ligne["coude_1pct_ms"] for ligne in lignes]
-        resume[f"{clients}c/{vehicules}v"] = {
+        resume[f"{clients}c/{vehicules}v/cap{capacite}"] = {
+            "chargements_par_vehicule": round(clients / (vehicules * capacite), 2),
             "graines": len(lignes),
             "derniere_amelioration_ms": {
                 "mediane": round(statistics.median(derniere)),
@@ -313,9 +330,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     parser.add_argument("--out", type=Path, default=Path("experiments/out/convergence.jsonl"))
     parser.add_argument("--budget", type=int, default=60, help="Plafond de recherche, en secondes")
-    parser.add_argument("--capacity", type=int, default=10)
     parser.add_argument("--tailles", type=int, nargs="+", default=[10, 25, 45, 60])
     parser.add_argument("--vehicules", type=int, nargs="+", default=[2, 3, 5])
+    parser.add_argument("--capacites", type=int, nargs="+", default=[5, 10, 20])
     parser.add_argument("--graines", type=int, nargs="+", default=[1, 2, 3, 4, 5])
     parser.add_argument(
         "--euclidien",
@@ -349,9 +366,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     road_matrix = not args.euclidien
-    a_faire = plan(args.tailles, args.vehicules, args.graines)
+    a_faire = plan(args.tailles, args.vehicules, args.capacites, args.graines)
     deja = {
-        (r["customers"], r["vehicles"], r["seed"])
+        cle(r)
         for r in read_rows(args.out)
         if r.get("road_matrix") == road_matrix and r.get("budget_seconds") == args.budget
     }
@@ -373,7 +390,7 @@ def main(argv: list[str] | None = None) -> int:
             points, routiere = trajectoire(
                 customers=run["customers"],
                 vehicles=run["vehicles"],
-                capacity=args.capacity,
+                capacity=run["capacity"],
                 seed=run["seed"],
                 budget_seconds=args.budget,
                 road_matrix=road_matrix,
@@ -382,7 +399,6 @@ def main(argv: list[str] | None = None) -> int:
             budget_ms = args.budget * 1000
             ligne = {
                 **run,
-                "capacity": args.capacity,
                 "budget_seconds": args.budget,
                 "road_matrix": road_matrix,
                 # Ce qui a réellement servi, et non ce qui a été demandé.
@@ -410,7 +426,8 @@ def main(argv: list[str] | None = None) -> int:
             store.append(ligne)
             print(
                 f"[{numero}/{len(restant)}] {run['customers']} clients, "
-                f"{run['vehicles']} livreurs, graine {run['seed']} : "
+                f"{run['vehicles']} livreurs, capacité {run['capacity']}, "
+                f"graine {run['seed']} : "
                 f"{len(ameliorants)} améliorations, dernière à "
                 f"{ligne['derniere_amelioration_ms']} ms, "
                 f"coude 1 % à {ligne['coude_1pct_ms']} ms",

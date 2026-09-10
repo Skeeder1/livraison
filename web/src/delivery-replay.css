@@ -931,3 +931,89 @@
   .dr-stage .dr-hud,
   .dr-stage .dr-legend { transition: none; }
 }
+
+/* ── Fitted search budget ──────────────────────────────────────────────────
+   The fifth item in the budget row does not name a duration: it derives one
+   from the instance. So it is shaped differently on purpose — a value the panel
+   computed deserves to look unlike the four the visitor can pick — and it
+   carries the one explanation on this panel that a visitor cannot get from the
+   control itself.
+
+   The info trigger is a SIBLING of the segment button, never a child: nesting
+   interactive content inside a button is invalid, and a screen reader would
+   have read one control where there are two. */
+.dr-segwrap {
+  position: relative;
+  display: flex;
+  flex: 1.5 1 0;
+  min-width: 0;
+}
+.dr-segwrap .dr-segbtn {
+  flex: 1 1 auto;
+  padding-right: 1.15rem;
+}
+.dr-segbtn--auto {
+  font-variant-numeric: tabular-nums;
+}
+.dr-segbtn--auto:not(.is-active) {
+  /* Dashed rather than filled: it reads as "derived", not as a fifth duration. */
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.dr-info {
+  position: absolute;
+  top: 50%;
+  right: 0.18rem;
+  transform: translateY(-50%);
+  width: 0.85rem;
+  height: 0.85rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 0.55rem;
+  line-height: 1;
+  cursor: help;
+  transition: color 0.18s, border-color 0.18s;
+}
+.dr-segbtn--auto.is-active + .dr-info {
+  border-color: color-mix(in srgb, #000 35%, transparent);
+  color: color-mix(in srgb, #000 70%, transparent);
+}
+.dr-info:hover,
+.dr-info:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--text-primary);
+}
+.dr-infotip {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 1005;
+  width: min(20rem, 78vw);
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.45rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  font-size: 0.7rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-align: left;
+  white-space: normal;
+}
+.dr-infotip-head {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-family: var(--font-family-mono);
+  margin-bottom: 0.3rem;
+}
+.dr-infotip-source {
+  margin-top: 0.4rem;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 0.63rem;
+}

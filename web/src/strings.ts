@@ -40,6 +40,12 @@ export interface DemoStrings {
     budget: string;
     seconds: string;
     minutes: string;
+    auto: string;
+    autoChosen: string;
+    autoInfoLabel: string;
+    autoInfoTitle: string;
+    autoInfoBody: string;
+    autoInfoSource: string;
     run: string;
     cancel: string;
     reset: string;
@@ -140,6 +146,13 @@ const en: DemoStrings = {
     budget: 'Search budget',
     seconds: '{n} s',
     minutes: '{n} min',
+    auto: 'Fitted',
+    autoChosen: '{n} s, fitted to this instance',
+    autoInfoLabel: 'What a search budget buys',
+    autoInfoTitle: 'Fitted to the instance',
+    autoInfoBody:
+      'The budget is a ceiling, not a stopping rule: the search improves its best tour until the clock runs out. On this instance it stops finding anything better well before that, so the seconds after it are paid for and change nothing. This setting gives it the measured time and no more.',
+    autoInfoSource: 'From convergence curves measured over {runs} runs.',
     run: 'Generate',
     cancel: 'Cancel',
     reset: 'Reference tour',
@@ -255,6 +268,13 @@ const fr: DemoStrings = {
     budget: 'Budget de recherche',
     seconds: '{n} s',
     minutes: '{n} min',
+    auto: 'Ajusté',
+    autoChosen: '{n} s, ajusté à cette instance',
+    autoInfoLabel: 'Ce qu\'achète un budget de recherche',
+    autoInfoTitle: 'Ajusté à l\'instance',
+    autoInfoBody:
+      'Le budget est un plafond, pas un critère d\'arrêt : la recherche améliore sa meilleure tournée jusqu\'à la fin du temps imparti. Sur cette instance, elle cesse de trouver mieux bien avant, et les secondes suivantes sont payées sans rien changer. Ce réglage lui donne le temps mesuré, pas davantage.',
+    autoInfoSource: 'D\'après des courbes de convergence mesurées sur {runs} exécutions.',
     run: 'Générer',
     cancel: 'Annuler',
     reset: 'Tournée de référence',
