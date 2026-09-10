@@ -147,12 +147,13 @@ const en: DemoStrings = {
     seconds: '{n} s',
     minutes: '{n} min',
     auto: 'Fitted',
-    autoChosen: '{n} s, fitted to this instance',
+    autoChosen: 'Fitted: {n} s for {customers} customers',
     autoInfoLabel: 'What a search budget buys',
     autoInfoTitle: 'Fitted to the instance',
     autoInfoBody:
-      'The budget is a ceiling, not a stopping rule: the search improves its best tour until the clock runs out. On this instance it stops finding anything better well before that, so the seconds after it are paid for and change nothing. This setting gives it the measured time and no more.',
-    autoInfoSource: 'From convergence curves measured over {runs} runs.',
+      'The budget is a ceiling, not a stopping rule: the search keeps improving its best tour until the clock runs out. How long it needs varies enormously with size — ten customers settle in about two seconds, sixty still gain ground at forty-five. This setting asks for the measured time for the size you chose, so a small round stops paying for seconds it cannot use and a large one stops being cut off early.',
+    autoInfoSource:
+      'Read off convergence curves from {runs} solves: the smallest budget within 0.5% of a one-minute search for the typical instance, and 5% for three in four.',
     run: 'Generate',
     cancel: 'Cancel',
     reset: 'Reference tour',
@@ -269,12 +270,13 @@ const fr: DemoStrings = {
     seconds: '{n} s',
     minutes: '{n} min',
     auto: 'Ajusté',
-    autoChosen: '{n} s, ajusté à cette instance',
+    autoChosen: 'Ajusté : {n} s pour {customers} clients',
     autoInfoLabel: 'Ce qu\'achète un budget de recherche',
     autoInfoTitle: 'Ajusté à l\'instance',
     autoInfoBody:
-      'Le budget est un plafond, pas un critère d\'arrêt : la recherche améliore sa meilleure tournée jusqu\'à la fin du temps imparti. Sur cette instance, elle cesse de trouver mieux bien avant, et les secondes suivantes sont payées sans rien changer. Ce réglage lui donne le temps mesuré, pas davantage.',
-    autoInfoSource: 'D\'après des courbes de convergence mesurées sur {runs} exécutions.',
+      'Le budget est un plafond, pas un critère d\'arrêt : la recherche améliore sa meilleure tournée jusqu\'à la fin du temps imparti. Le temps qu\'il lui faut varie énormément avec la taille — dix clients sont réglés en deux secondes environ, soixante gagnent encore du terrain à quarante-cinq. Ce réglage demande le temps mesuré pour la taille choisie : une petite tournée cesse de payer des secondes inutilisables, une grande cesse d\'être coupée trop tôt.',
+    autoInfoSource:
+      'Lu sur les courbes de convergence de {runs} résolutions : le plus petit budget à 0,5 % d\'une recherche d\'une minute pour l\'instance typique, et à 5 % pour trois sur quatre.',
     run: 'Générer',
     cancel: 'Annuler',
     reset: 'Tournée de référence',

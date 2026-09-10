@@ -1006,14 +1006,28 @@
   white-space: normal;
 }
 .dr-infotip-head {
+  /* Block, not inline: these are spans because the tooltip lives inside a
+     <span> that sits between two buttons, and an inline head would run into the
+     first sentence of the body. */
+  display: block;
   color: var(--text-primary);
   font-weight: 600;
   font-family: var(--font-family-mono);
   margin-bottom: 0.3rem;
 }
 .dr-infotip-source {
+  display: block;
   margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
   color: var(--text-muted);
   font-family: var(--font-family-mono);
   font-size: 0.63rem;
+}
+.dr-field-note {
+  margin-top: 0.3rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.63rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }

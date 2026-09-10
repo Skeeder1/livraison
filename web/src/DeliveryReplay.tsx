@@ -14,6 +14,7 @@ import type { DemoStrings } from './strings';
 import type { Tour, Vehicle } from './tour';
 import {
   BUDGET_CHOICES,
+  budgetForInstance,
   CAPACITY,
   CUSTOMERS,
   DEFAULT_PARAMS,
@@ -245,6 +246,9 @@ function referenceParams(reference: Tour): SolveParams {
     capacity: reference.stats.capacity,
     timeWindows: reference.stats.timeWindowsBinding,
     budgetSeconds: DEFAULT_PARAMS.budgetSeconds,
+    // The frozen round was solved at a fixed budget, not a fitted one, and this
+    // object exists to describe what it actually was.
+    budgetMode: 'fixed',
   };
 }
 
@@ -391,6 +395,9 @@ export default function DeliveryReplay({
   const [params, setParams] = useState<SolveParams>(DEFAULT_PARAMS);
   const [advanced, setAdvanced] = useState(false);
   const [solving, setSolving] = useState(false);
+  /** Whether the fitted budget's explanation is showing. Hover opens it, and a
+   *  click latches it, so a touch device — which has no hover — can read it. */
+  const [budgetInfo, setBudgetInfo] = useState(false);
   const [solveSeconds, setSolveSeconds] = useState(0);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [swapping, setSwapping] = useState(false);
@@ -1631,7 +1638,23 @@ export default function DeliveryReplay({
                 step={CUSTOMERS.step}
                 value={params.customers}
                 disabled={solving}
-                onChange={(e) => setParams((p) => ({ ...p, customers: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setParams((p) => {
+                    // A fitted budget is a function of this slider, so it has to
+                    // move with it. Leaving it behind would show a number that
+                    // was measured for a round the visitor no longer has, which
+                    // is worse than showing nothing.
+                    const customers = Number(e.target.value);
+                    return {
+                      ...p,
+                      customers,
+                      budgetSeconds:
+                        p.budgetMode === 'fitted'
+                          ? budgetForInstance(customers)
+                          : p.budgetSeconds,
+                    };
+                  })
+                }
                 style={{
                   ['--dr-progress' as string]: `${
                     ((params.customers - CUSTOMERS.min) / (CUSTOMERS.max - CUSTOMERS.min)) * 100
@@ -1742,21 +1765,86 @@ export default function DeliveryReplay({
                   {strings.solve.budget}
                 </span>
                 <div className="dr-seg" role="group" aria-labelledby="dr-budget-label">
-                  {BUDGET_CHOICES.map((n) => (
+                  {BUDGET_CHOICES.map((n) => {
+                    const active = params.budgetMode === 'fixed' && n === params.budgetSeconds;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        className={`dr-segbtn${active ? ' is-active' : ''}`}
+                        aria-pressed={active}
+                        disabled={solving}
+                        onClick={() =>
+                          setParams((p) => ({ ...p, budgetMode: 'fixed', budgetSeconds: n }))
+                        }
+                      >
+                        {n >= 60
+                          ? strings.solve.minutes.replace('{n}', String(n / 60))
+                          : strings.solve.seconds.replace('{n}', String(n))}
+                      </button>
+                    );
+                  })}
+                  {/* The fifth item names no duration: it derives one from the
+                      instance. That is the whole reason it carries the only
+                      explanation on this panel a visitor cannot read off the
+                      control itself, and the reason the info trigger is a
+                      SIBLING of the button rather than a child — interactive
+                      content nested in a button is invalid, and a screen reader
+                      would announce one control where there are two. */}
+                  <span className="dr-segwrap">
                     <button
-                      key={n}
                       type="button"
-                      className={`dr-segbtn${n === params.budgetSeconds ? ' is-active' : ''}`}
-                      aria-pressed={n === params.budgetSeconds}
+                      className={`dr-segbtn dr-segbtn--auto${
+                        params.budgetMode === 'fitted' ? ' is-active' : ''
+                      }`}
+                      aria-pressed={params.budgetMode === 'fitted'}
                       disabled={solving}
-                      onClick={() => setParams((p) => ({ ...p, budgetSeconds: n }))}
+                      onClick={() =>
+                        setParams((p) => ({
+                          ...p,
+                          budgetMode: 'fitted',
+                          budgetSeconds: budgetForInstance(p.customers),
+                        }))
+                      }
                     >
-                      {n >= 60
-                        ? strings.solve.minutes.replace('{n}', String(n / 60))
-                        : strings.solve.seconds.replace('{n}', String(n))}
+                      {/* The label stays put. Showing the resolved seconds here
+                          would put a second "30 s" in a row that already has
+                          one, and the two would mean different things: one is a
+                          duration you picked, the other a duration that was
+                          derived for you. The note below carries the number. */}
+                      {strings.solve.auto}
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      className="dr-info"
+                      aria-label={strings.solve.autoInfoLabel}
+                      aria-expanded={budgetInfo}
+                      onClick={() => setBudgetInfo((open) => !open)}
+                      onMouseEnter={() => setBudgetInfo(true)}
+                      onMouseLeave={() => setBudgetInfo(false)}
+                      onFocus={() => setBudgetInfo(true)}
+                      onBlur={() => setBudgetInfo(false)}
+                    >
+                      i
+                    </button>
+                    {budgetInfo && (
+                      <span className="dr-infotip" role="tooltip">
+                        <span className="dr-infotip-head">{strings.solve.autoInfoTitle}</span>
+                        {strings.solve.autoInfoBody}
+                        <span className="dr-infotip-source">
+                          {strings.solve.autoInfoSource.replace('{runs}', '180')}
+                        </span>
+                      </span>
+                    )}
+                  </span>
                 </div>
+                {params.budgetMode === 'fitted' && (
+                  <span className="dr-field-note">
+                    {strings.solve.autoChosen
+                      .replace('{n}', String(params.budgetSeconds))
+                      .replace('{customers}', String(params.customers))}
+                  </span>
+                )}
               </div>
             </div>
           )}

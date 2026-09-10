@@ -336,3 +336,78 @@ la recherche plus longtemps.
 Retenu : `TIME_SPAN_COEFFICIENT = 5`, seule valeur qui gagne ou égalise aux deux
 budgets et dans les deux scénarios. Les autres facteurs restent à leur valeur
 livrée, faute d'effet qui survive au changement de budget.
+
+## `convergence.py` — combien de temps donner à la recherche
+
+Harnais distinct du reste de ce dossier, et pour une raison de fond : les autres
+campagnes comparent des **configurations** à budget égal, celle-ci mesure ce que
+vaut le **budget** lui-même. Elle n'a donc pas de facteurs `Config` à balayer,
+mais une trajectoire à enregistrer.
+
+`solve_vrp` accepte un rappel `on_solution`, appelé à chaque solution que la
+recherche accepte. Sans lui, une recherche qui a convergé et une recherche coupée
+en pleine progression sont indiscernables de l'extérieur : les deux rendent « une
+solution ».
+
+### Trois propriétés vérifiées avant d'exploiter quoi que ce soit
+
+* **la trajectoire est déterministe** — deux exécutions du même couple rendent la
+  même suite d'objectifs, à la gigue d'horloge près ;
+* **une trajectoire courte est le préfixe exact d'une trajectoire longue** — la
+  recherche ignore son plafond. Une seule mesure à budget large donne donc la
+  courbe de tous les budgets plus courts ;
+* **la suite des objectifs n'est pas décroissante** — la recherche locale guidée
+  accepte des dégradations pour sortir d'un optimum local, et le rappel les voit.
+  Mesuré : 43 pas non décroissants sur 440. Le seul chiffre qui a un sens est le
+  **minimum courant**.
+
+Cette dernière propriété n'est pas un détail. Confondre la date du dernier rappel
+avec celle de la dernière amélioration fait conclure qu'une recherche progressait
+encore à la dernière milliseconde alors qu'elle n'avait rien amélioré depuis
+longtemps. C'est l'erreur qui figurait dans l'issue #21, et ce module existe pour
+ne plus la commettre.
+
+### Ce qu'on en tire
+
+`--regle` rend le budget par taille : le plus petit dont l'écart à une recherche
+d'une minute reste sous 0,5 % en médiane et sous 5 % au quantile 0,75, pour
+**toutes** les flottes et capacités mesurées à cette taille.
+
+| clients | budget retenu |
+|---|---|
+| 10 | 2 s |
+| 25 | 20 s |
+| 45 | 30 s |
+| 60 | 45 s |
+
+Le critère porte sur l'écart d'objectif et non sur la date de la dernière
+amélioration : le visiteur ne demande pas si la recherche a fini, il demande à
+combien de la meilleure tournée connue il se trouve. Deux seuils plutôt qu'un,
+parce qu'une seule statistique se laisse tromper — la médiane seule abandonne un
+quart des visiteurs, un quantile élevé seul n'est atteint qu'au plafond sur les
+grandes instances.
+
+Le budget n'est indexé que sur le nombre de clients, et ce sont les mesures qui
+l'imposent : **la flotte n'ordonne pas la difficulté**. À 45 clients, deux
+livreurs sont plus faciles que trois — moins de tournées, donc un espace de
+recherche plus petit — alors que l'intuition dit l'inverse, et le rapport
+« chargements par véhicule » ne classe pas mieux.
+
+### Deux pièges consignés dans les données
+
+Un coude est une **durée**, donc une propriété de la machine : la même instance
+passe de 115 ms à 258 ms entre les profils `performance` et `power-saver`. Le
+profil est journalisé et l'analyse refuse d'en mélanger deux.
+
+`create_toy_data` retombe **silencieusement** sur les distances euclidiennes
+quand le serveur de routage refuse la matrice — un HTTP 429 suffit — en ne le
+signalant que sur la sortie standard. Chaque ligne porte donc
+`matrice_routiere_obtenue`, une mesure contaminée n'est pas journalisée, et
+l'analyse refuse de résumer un journal qui mélange les deux. Ce garde-fou n'est
+pas théorique : il a été ajouté après qu'une campagne l'a subi.
+
+```bash
+python -m experiments.convergence --out experiments/out/convergence.jsonl --budget 60
+python -m experiments.convergence --analyser   # coudes par cellule
+python -m experiments.convergence --regle      # budget retenu par taille
+```

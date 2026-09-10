@@ -14,6 +14,10 @@ tests. À tenir à jour à chaque fonctionnalité terminée.
 | Correspondance des nœuds étendus vers leur position physique | `optimizer.solver.create_base_node_mapping` | `tests/unit/test_solver_nodes.py::TestCreateBaseNodeMapping` |
 | Contournement de la régression OR-Tools 9.15 sur `SetAllowedVehiclesForIndex` | `optimizer.solver.set_allowed_vehicles` | `tests/unit/test_solver_compat.py` |
 | Budgets de recherche bornés par appel (temps total, LNS) | `optimizer.solver.configure_search_parameters` | `tests/integration/test_scenario.py` |
+| Observation de chaque solution améliorante pendant la recherche | `optimizer.solver.solve_vrp(on_solution=...)` | `experiments/convergence.py` |
+| Budget de recherche ajusté à la taille de l'instance, mesuré sur 180 résolutions | `experiments.convergence.regle`, `web/src/solve.ts::budgetForInstance` | `experiments/out/convergence.jsonl` |
+| Routage cycliste réel (instance `routed-bike` de FOSSGIS), identité et débit respectés | `optimizer.road_routing._ouvrir` | `tests/unit/test_road_routing.py::TestEtranglement` |
+| Séparation des délais matrice / géométrie | `optimizer.road_routing.TABLE_TIMEOUT` | `tests/unit/test_road_routing.py` |
 
 ## Données
 
