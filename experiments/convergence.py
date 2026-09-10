@@ -181,6 +181,115 @@ def coude(points: list[tuple[int, int]], budget_ms: int, tolerance: float) -> in
     return budget_ms
 
 
+#: Budgets candidats, en secondes. La règle choisit parmi eux : proposer une
+#: valeur qui n'a pas été mesurée reviendrait à extrapoler une courbe dont on
+#: sait qu'elle n'est pas lisse.
+BUDGETS_CANDIDATS = (1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60)
+
+#: Critère d'acceptation d'un budget, écrit une fois et appliqué partout.
+#:
+#: Deux seuils et non un, parce qu'une seule statistique se laisse tromper. La
+#: médiane seule accepterait un budget qui sert bien l'instance typique et
+#: abandonne un quart des visiteurs ; un quantile élevé seul ferait payer à tout
+#: le monde le pire cas, et sur les grandes instances il n'est atteint qu'au
+#: plafond — mesuré, la cellule 45 clients / 2 livreurs reste à 11,2 % au
+#: quantile 0,9 de 5 s jusqu'à 30 s, parce qu'une graine sur cinq trouve une
+#: grosse amélioration entre 30 et 60 s.
+#:
+#: Les seuils portent sur l'**écart à ce que trouve une recherche d'une minute**,
+#: en pourcentage de l'objectif, et non sur la date de la dernière amélioration.
+#: C'est la question du visiteur : non pas « la recherche a-t-elle fini » mais
+#: « à combien de la meilleure tournée connue suis-je ».
+ECART_MEDIAN_MAX = 0.5
+ECART_Q75_MAX = 5.0
+
+
+def objectif_a(trajectoire: list[list[int]], date_ms: int) -> int | None:
+    """Meilleur objectif connu à cette date, ou `None` si rien n'a encore été
+    trouvé — ce qui arrive : sur 60 clients, une seconde ne suffit pas toujours
+    à produire une première solution."""
+    meilleur = None
+    for date, objectif in trajectoire:
+        if date > date_ms:
+            break
+        meilleur = objectif
+    return meilleur
+
+
+def ecarts(lignes: list[dict[str, Any]], budget_s: int) -> list[float] | None:
+    """
+    Écart relatif à l'objectif final, en %, pour chaque exécution.
+
+    Rend `None` si une seule exécution n'a pas de solution à cette date : un
+    budget qui laisse un visiteur sans tournée n'est pas un budget acceptable,
+    et le moyenner avec ceux qui ont réussi masquerait exactement ce cas.
+    """
+    valeurs = []
+    for ligne in lignes:
+        final = ligne["trajectoire"][-1][1]
+        obtenu = objectif_a(ligne["trajectoire"], budget_s * 1000)
+        if obtenu is None:
+            return None
+        valeurs.append((obtenu - final) / final * 100.0)
+    return valeurs
+
+
+def _quantile(valeurs: list[float], q: float) -> float:
+    ordonnees = sorted(valeurs)
+    if len(ordonnees) == 1:
+        return ordonnees[0]
+    rang = q * (len(ordonnees) - 1)
+    bas = int(rang)
+    haut = min(bas + 1, len(ordonnees) - 1)
+    return ordonnees[bas] + (ordonnees[haut] - ordonnees[bas]) * (rang - bas)
+
+
+def regle(rows: list[dict[str, Any]]) -> dict[int, int]:
+    """
+    Budget retenu par nombre de clients : le plus petit qui passe le critère.
+
+    Le budget est indexé sur le **nombre de clients seul**, et c'est un choix
+    que les mesures imposent plutôt qu'une simplification. La flotte ne classe
+    pas la difficulté : à 45 clients, deux livreurs sont plus faciles que trois
+    — moins de tournées, donc un espace de recherche plus petit — alors que
+    l'intuition dit le contraire. Le rapport « chargements par véhicule » ne la
+    classe pas davantage. Indexer sur un facteur qui n'ordonne pas la difficulté
+    donnerait une règle plus compliquée et pas meilleure.
+
+    Chaque taille prend donc le budget qui satisfait le critère pour **toutes**
+    les flottes et toutes les capacités mesurées à cette taille : c'est la
+    flotte la plus exigeante qui décide, puisque le visiteur choisit la sienne.
+    """
+    par_taille: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        par_taille.setdefault(row["customers"], []).append(row)
+
+    retenus = {}
+    for clients, lignes in sorted(par_taille.items()):
+        cellules: dict[tuple[int, int], list[dict[str, Any]]] = {}
+        for ligne in lignes:
+            cellules.setdefault((ligne["vehicles"], ligne["capacity"]), []).append(ligne)
+        choisi = max(BUDGETS_CANDIDATS)
+        for budget in BUDGETS_CANDIDATS:
+            convient = True
+            for cellule in cellules.values():
+                valeurs = ecarts(cellule, budget)
+                if valeurs is None:
+                    convient = False
+                    break
+                if (
+                    _quantile(valeurs, 0.5) > ECART_MEDIAN_MAX
+                    or _quantile(valeurs, 0.75) > ECART_Q75_MAX
+                ):
+                    convient = False
+                    break
+            if convient:
+                choisi = budget
+                break
+        retenus[clients] = choisi
+    return retenus
+
+
 def empreinte_machine() -> dict[str, Any]:
     """
     De quoi relire une mesure sans se tromper sur ce qu'elle vaut.
@@ -341,11 +450,45 @@ def main(argv: list[str] | None = None) -> int:
         "c'est-à-dire ce que résout la démonstration en production.",
     )
     parser.add_argument(
+        "--regle",
+        action="store_true",
+        help="N'exécute rien : dérive le budget par taille et sort.",
+    )
+    parser.add_argument(
         "--analyser",
         action="store_true",
         help="N'exécute rien : résume le journal existant et sort.",
     )
     args = parser.parse_args(argv)
+
+    if args.regle:
+        rows = read_rows(args.out)
+        if not rows:
+            print(f"aucune mesure dans {args.out}")
+            return 1
+        retenus = regle(rows)
+        print(
+            f"{len(rows)} exécutions. Critère : médiane <= {ECART_MEDIAN_MAX} %, "
+            f"quantile 0,75 <= {ECART_Q75_MAX} % d'écart à une recherche de "
+            f"{rows[0]['budget_seconds']} s.\n"
+        )
+        print(f"{'clients':>8} {'budget':>8}   détail par cellule (médiane/q75 à ce budget)")
+        for clients, budget in retenus.items():
+            lignes = [r for r in rows if r["customers"] == clients]
+            cellules: dict[tuple[int, int], list[dict[str, Any]]] = {}
+            for ligne in lignes:
+                cellules.setdefault((ligne["vehicles"], ligne["capacity"]), []).append(ligne)
+            detail = []
+            for (v, k), cellule in sorted(cellules.items()):
+                valeurs = ecarts(cellule, budget)
+                if valeurs is None:
+                    detail.append(f"{v}v/c{k}:pas de solution")
+                else:
+                    detail.append(
+                        f"{v}v/c{k}:{_quantile(valeurs, 0.5):.2f}/{_quantile(valeurs, 0.75):.2f}"
+                    )
+            print(f"{clients:>8} {budget:>7} s   " + "  ".join(detail))
+        return 0
 
     if args.analyser:
         rows = read_rows(args.out)
