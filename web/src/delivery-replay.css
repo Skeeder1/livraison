@@ -1031,3 +1031,38 @@
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Which of the two modes applies, said before the button is pressed ──────
+   The panel can answer a configuration from the pre-solved corpus or run the
+   solver, and the difference is thirty seconds. Announcing it afterwards is too
+   late: a control labelled "show" that then makes you wait has lied.
+
+   `min-height` is held across all three states, including while the answer is
+   still being fetched, so learning it never shifts the buttons underneath. */
+.dr-mode {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.05rem 0.4rem;
+  min-height: 1.15rem;
+  margin: 0 0 0.55rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.dr-mode svg {
+  flex: none;
+  align-self: center;
+  opacity: 0.75;
+}
+.dr-mode b {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+/* The stored case is the good news, so it gets the accent — once, on the label,
+   and nowhere else. The waiting case stays muted: it is the ordinary outcome,
+   not a warning. */
+.dr-mode.is-ready svg { color: var(--accent); opacity: 1; }
+.dr-mode.is-ready b { color: var(--text-primary); }
+.dr-mode-wait { display: inline-block; }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // `Map` is aliased: the icon would otherwise shadow the global Map constructor,
 // which this file uses for the delivery lookups and the flash set.
-import { ChevronDown, LoaderCircle, Map as MapIcon, Pause, Play, RotateCcw, Sparkles, TriangleAlert, X } from 'lucide-react';
+import { ChevronDown, Clock, LoaderCircle, Map as MapIcon, Pause, Play, RefreshCw, RotateCcw, Sparkles, TriangleAlert, X, Zap } from 'lucide-react';
 // Types only, so nothing of Leaflet is pulled in while this island is rendered
 // on the server. The library itself is imported dynamically on mount: it reads
 // `document.documentElement.style` at module scope and throws in Node.
@@ -15,6 +15,8 @@ import type { Tour, Vehicle } from './tour';
 import {
   BUDGET_CHOICES,
   budgetForInstance,
+  bakedState,
+  type BakedState,
   isBaked,
   CAPACITY,
   CUSTOMERS,
@@ -400,10 +402,16 @@ export default function DeliveryReplay({
    *  click latches it, so a touch device — which has no hover — can read it. */
   const [budgetInfo, setBudgetInfo] = useState(false);
   /** Whether the round on screen was read from the pre-solved set rather than
-   *  searched just now. Drives the "run the solver" action and the note that
-   *  says no search ran — a visitor should never be left thinking a stored
-   *  answer was computed for them. */
+   *  searched just now. Drives the note that says no search ran — a visitor
+   *  should never be left thinking a stored answer was computed for them. */
   const [showingBaked, setShowingBaked] = useState(false);
+  /** Whether the corpus can answer the configuration currently composed.
+   *
+   *  Known BEFORE the button is pressed, which is the whole point: a control
+   *  labelled "show" that then makes you wait thirty seconds has lied, and a
+   *  "solve" that returns instantly is just as confusing. Starts as `checking`
+   *  so the panel never claims either until it knows. */
+  const [mode, setMode] = useState<BakedState>('checking');
   const [solveSeconds, setSolveSeconds] = useState(0);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [swapping, setSwapping] = useState(false);
@@ -1288,6 +1296,29 @@ export default function DeliveryReplay({
     }
   }, [params, showTour, solve]);
 
+  // Re-asked whenever the composed instance changes, debounced: dragging a
+  // slider crosses a dozen values and only the one it lands on is worth a
+  // request. `HEAD`, so nothing is downloaded to answer the question.
+  useEffect(() => {
+    const controller = new AbortController();
+    let alive = true;
+    setMode('checking');
+    const timer = setTimeout(() => {
+      bakedState(params, controller.signal)
+        .then((next) => {
+          if (alive) setMode(next);
+        })
+        .catch(() => {
+          // An abort is this effect being superseded, which is not a failure.
+        });
+    }, 220);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [params]);
+
   const cancelSolve = useCallback(() => abortRef.current?.abort(), []);
 
   const showReference = useCallback(() => {
@@ -1869,6 +1900,29 @@ export default function DeliveryReplay({
             </div>
           )}
 
+          {/* What pressing the button will do, said before it is pressed.
+              Rendered at a fixed height whatever the state, so learning the
+              answer never shifts the controls under the pointer. */}
+          <p className={`dr-mode${mode === 'ready' ? ' is-ready' : ''}`} aria-live="polite">
+            {mode === 'checking' ? (
+              <span className="dr-mode-wait">{'\u00a0'}</span>
+            ) : mode === 'ready' ? (
+              <>
+                <Zap size={13} aria-hidden="true" />
+                <b>{strings.solve.modeReady}</b>
+                <span>{strings.solve.modeReadyHint}</span>
+              </>
+            ) : (
+              <>
+                <Clock size={13} aria-hidden="true" />
+                <span>
+                  {(mode === 'fixed-budget' ? strings.solve.modeFixed : strings.solve.modeAbsent)
+                    .replace('{n}', String(params.budgetSeconds))}
+                </span>
+              </>
+            )}
+          </p>
+
           <div className="dr-actions">
             <button
               type="button"
@@ -1876,22 +1930,27 @@ export default function DeliveryReplay({
               onClick={() => runSolve()}
               disabled={solving || blocked}
             >
-              <Sparkles size={15} aria-hidden="true" />
-              <span>{strings.solve.run}</span>
+              {mode === 'ready' ? (
+                <Zap size={15} aria-hidden="true" />
+              ) : (
+                <Sparkles size={15} aria-hidden="true" />
+              )}
+              <span>{mode === 'ready' ? strings.solve.show : strings.solve.run}</span>
             </button>
 
-            {/* Only offered once the round on screen came out of the pre-solved
-                set. Before that there is nothing to re-run, and a permanent
-                second button would suggest the first one had not really solved
-                anything. */}
-            {showingBaked && !solving && (
+            {/* Present as soon as the corpus can answer, and not only after it
+                has — the action is available either way, and a button that
+                appears once a result lands would shift the row under the
+                pointer at the exact moment the visitor reaches for it. */}
+            {mode === 'ready' && (
               <button
                 type="button"
                 className="dr-btn"
                 onClick={() => runSolve(true)}
-                disabled={blocked}
+                disabled={solving || blocked}
                 title={strings.solve.rerunHint}
               >
+                <RefreshCw size={15} aria-hidden="true" />
                 <span>{strings.solve.rerun}</span>
               </button>
             )}

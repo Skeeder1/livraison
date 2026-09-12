@@ -284,6 +284,46 @@ export function bakedKey(params: SolveParams): string {
   }`;
 }
 
+/** Whether the pre-solved corpus can answer the configuration on screen.
+ *
+ *  `'absent'` is a perfectly normal state, not a fault: 54 of the 7 392
+ *  configurations were refused at bake time because the tour they produce is one
+ *  the canvas could not draw, and any configuration can be widened into the plan
+ *  later. What it must never be is a surprise — a visitor pressing a button
+ *  labelled "show" and waiting thirty seconds has been lied to. */
+export type BakedState = 'checking' | 'ready' | 'absent' | 'fixed-budget';
+
+/** Asks whether the corpus holds this configuration, without downloading it.
+ *
+ *  A `HEAD` request rather than a manifest, and the choice is deliberate. A
+ *  manifest of 7 392 keys is 130 KB every visitor would pay for on arrival, and
+ *  it would be a second thing to keep in step with the corpus — a stale entry
+ *  would make the panel promise an instant answer it cannot give. Asking the
+ *  server is a few hundred bytes, needs nothing kept in sync, and is right by
+ *  construction.
+ *
+ *  Any failure reads as `'absent'`. Being wrong in that direction costs a label
+ *  that undersells; being wrong the other way promises an instant tour and then
+ *  makes the visitor wait. */
+export async function bakedState(
+  params: SolveParams,
+  signal?: AbortSignal,
+): Promise<BakedState> {
+  // The corpus is solved exclusively at the fitted budget, so a visitor who
+  // picked one of the four fixed durations is asking for a search, full stop.
+  if (params.budgetMode !== 'fitted') return 'fixed-budget';
+  try {
+    const response = await fetch(`${BAKED_BASE}/${bakedKey(params)}.json`, {
+      method: 'HEAD',
+      signal,
+    });
+    return response.ok ? 'ready' : 'absent';
+  } catch (cause) {
+    if ((cause as Error)?.name === 'AbortError') throw cause;
+    return 'absent';
+  }
+}
+
 /** True when this tour came out of the pre-solved corpus rather than a solver
  *  run just now. Read from the document, so it cannot disagree with it. */
 export function isBaked(tour: Tour): boolean {

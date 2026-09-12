@@ -42,6 +42,11 @@ export interface DemoStrings {
     minutes: string;
     auto: string;
     rerun: string;
+    show: string;
+    modeReady: string;
+    modeReadyHint: string;
+    modeAbsent: string;
+    modeFixed: string;
     rerunHint: string;
     fromBaked: string;
     autoChosen: string;
@@ -149,11 +154,16 @@ const en: DemoStrings = {
     budget: 'Search budget',
     seconds: '{n} s',
     minutes: '{n} min',
-    auto: 'Fitted',
-    rerun: 'Run the solver',
-    rerunHint: 'Search this instance again instead of reading the stored answer.',
-    fromBaked: 'Read from the pre-solved set — no search ran.',
-    autoChosen: 'Fitted: {n} s for {customers} customers',
+    auto: 'Auto',
+    rerun: 'Run a new search',
+    show: 'Show result',
+    modeReady: 'Already calculated',
+    modeReadyHint: 'This result is stored, so it appears at once. Running a new search on the same settings can give a different route.',
+    modeAbsent: 'Not stored yet. The solver will run, about {n} s.',
+    modeFixed: 'Fixed time. The solver will run for {n} s.',
+    rerunHint: 'Run a new search for these settings.',
+    fromBaked: 'Previously computed result. No new search was needed.',
+    autoChosen: 'Auto: {n} s for {customers} customers',
     autoInfoLabel: 'What a search budget buys',
     autoInfoTitle: 'Fitted to the instance',
     autoInfoBody:
@@ -168,7 +178,7 @@ const en: DemoStrings = {
     solvingMeta: '{elapsed} s, budget {budget} s',
     readyTitle: 'New tour ready',
     summary: '{customers} customers, {vehicles} couriers, {capacity} parcels each',
-    liveNote: 'The solver runs on demand, only when you press Generate.',
+    liveNote: 'Every combination of settings was calculated once in advance, so results appear instantly. The solver still runs whenever you ask for a new search.',
   },
   delta: {
     title: 'Against the reference',
@@ -275,11 +285,16 @@ const fr: DemoStrings = {
     budget: 'Budget de recherche',
     seconds: '{n} s',
     minutes: '{n} min',
-    auto: 'Ajusté',
-    rerun: 'Lancer le solveur',
-    rerunHint: 'Rechercher à nouveau cette instance au lieu de lire la réponse enregistrée.',
-    fromBaked: 'Lu dans le jeu pré-résolu — aucune recherche n\'a tourné.',
-    autoChosen: 'Ajusté : {n} s pour {customers} clients',
+    auto: 'Auto',
+    rerun: 'Lancer une nouvelle recherche',
+    show: 'Afficher le résultat',
+    modeReady: 'Déjà calculée',
+    modeReadyHint: 'Ce résultat est enregistré, il apparaît donc aussitôt. Relancer une recherche sur les mêmes réglages peut donner un autre trajet.',
+    modeAbsent: 'Pas encore enregistrée. Le solveur tournera, environ {n} s.',
+    modeFixed: 'Durée fixe. Le solveur tournera {n} s.',
+    rerunHint: 'Relancer un calcul avec ces paramètres.',
+    fromBaked: 'Résultat déjà calculé. Aucune nouvelle recherche nécessaire.',
+    autoChosen: 'Auto : {n} s pour {customers} clients',
     autoInfoLabel: 'Ce qu\'achète un budget de recherche',
     autoInfoTitle: 'Ajusté à l\'instance',
     autoInfoBody:
@@ -294,7 +309,7 @@ const fr: DemoStrings = {
     solvingMeta: '{elapsed} s, budget {budget} s',
     readyTitle: 'Nouvelle tournée prête',
     summary: '{customers} clients, {vehicles} coursiers, {capacity} colis chacun',
-    liveNote: 'Le solveur ne tourne qu’à la demande, quand vous appuyez sur Générer.',
+    liveNote: 'Chaque combinaison de réglages a été calculée une fois à l’avance, les résultats apparaissent donc instantanément. Le solveur tourne dès que vous demandez une nouvelle recherche.',
   },
   delta: {
     title: 'Face à la référence',
