@@ -355,6 +355,35 @@ def _document(data, manager, routing, assignment, *, settings, elapsed, fetch_ro
     return build_tour(source, meta)
 
 
+def _reconstruire(routing, noeuds):
+    """
+    Reconstruit une affectation complète depuis l'ordre des tournées.
+
+    Pas `ReadAssignmentFromRoutes` : il achève l'affectation sous la limite de
+    recherche **du modèle**, que la recherche principale vient d'épuiser, et
+    rend donc `None` en une milliseconde avec le statut « délai dépassé ». Il
+    n'a jamais réussi que par chance de chronométrage.
+
+    Ici l'ordre des tournées devient une affectation partielle, puis une
+    recherche repart de là sous sa **propre** limite, bornée à une seule
+    solution : la première solution d'une recherche qui part d'une affectation
+    est cette affectation achevée, ni plus ni moins. Vérifié : objectif
+    identique à l'instantané sur chaque reconstruction.
+    """
+    from ortools.constraint_solver import pywrapcp, routing_enums_pb2
+
+    affectation = routing.solver().Assignment()
+    if not routing.RoutesToAssignment(noeuds, True, True, affectation):
+        return None
+    parametres = pywrapcp.DefaultRoutingSearchParameters()
+    parametres.time_limit.FromSeconds(10)
+    parametres.solution_limit = 1
+    parametres.local_search_metaheuristic = (
+        routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC
+    )
+    return routing.SolveFromAssignmentWithParameters(affectation, parametres)
+
+
 def solve_scenario_at_budgets(
     params: dict[str, Any],
     *,
@@ -369,8 +398,8 @@ def solve_scenario_at_budgets(
     la même instance — le solveur ignore son plafond (vérifié,
     `experiments/convergence.py`). On lance donc une seule recherche au plus
     grand des budgets, on relève l'ordre des tournées à chaque amélioration, et
-    on reconstruit l'affectation complète de chaque instantané par
-    `ReadAssignmentFromRoutes`. Vérifié : objectif et post-traitement identiques
+    on reconstruit l'affectation complète de chaque instantané avec
+    `_reconstruire`. Vérifié : objectif et post-traitement identiques
     à ceux du solveur, hubs et rechargements compris.
 
     Pas de géométrie routière ici (`fetch_roads` implicite à faux) : l'appelant
@@ -451,10 +480,10 @@ def solve_scenario_at_budgets(
             if budget == max(budgets):
                 affectation = solution  # la solution finale, telle quelle
             else:
-                # Sans le nœud de départ : `ReadAssignmentFromRoutes` attend les
-                # nœuds visités, et rétablit lui-même départ et arrivée.
+                # Sans le nœud de départ : `RoutesToAssignment` attend les nœuds
+                # visités et rétablit lui-même départ et arrivée.
                 noeuds = [[manager.IndexToNode(i) for i in r[1:]] for r in routes]
-                affectation = routing.ReadAssignmentFromRoutes(noeuds, True)
+                affectation = _reconstruire(routing, noeuds)
                 if affectation is None:
                     tours[budget] = None
                     continue

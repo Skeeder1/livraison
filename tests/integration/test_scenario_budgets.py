@@ -39,14 +39,31 @@ def test_la_tournee_finale_porte_l_objectif_final_de_la_courbe(quatre):
 
 
 def test_une_tournee_reconstruite_reproduit_exactement_son_instantane(quatre):
-    """La reconstruction par `ReadAssignmentFromRoutes` doit rendre l'objectif
-    relevé au moment de l'instantané, à l'unité près — c'est ce qui rend
-    honnête « la tournée à 4 s » : ce n'est pas une approximation."""
+    """La reconstruction doit rendre l'objectif relevé au moment de
+    l'instantané, à l'unité près — et elle doit **rendre quelque chose** :
+    un `None` à un budget où la courbe a déjà un point est un échec de
+    reconstruction, pas une absence de solution. C'est exactement le cas qui
+    s'est produit quand la reconstruction héritait d'une limite de recherche
+    déjà épuisée."""
     tours, curve = quatre
     for budget in (2, 4):
-        if tours[budget] is None:
+        attendu = _objectif_au_budget(curve, budget)
+        if attendu is None:
+            assert tours[budget] is None
             continue
-        assert tours[budget]["meta"]["objective"] == _objectif_au_budget(curve, budget)
+        assert tours[budget] is not None, f"reconstruction échouée à {budget} s"
+        assert tours[budget]["meta"]["objective"] == attendu
+
+
+def test_la_reconstruction_ne_depend_pas_du_chronometre():
+    """Cent reconstructions d'affilée, aucune ne doit échouer : la limite de
+    la recherche principale ne doit plus entrer en jeu."""
+    tours, curve = solve_scenario_at_budgets(
+        PARAMS, workdir=Path(tempfile.mkdtemp()),
+        budgets=tuple(range(1, 9)), road_matrix=False,
+    )
+    manques = [b for b in range(1, 9) if tours[b] is None and _objectif_au_budget(curve, b) is not None]
+    assert manques == [], f"reconstructions manquantes aux budgets {manques}"
 
 
 def test_la_courbe_est_strictement_decroissante(quatre):
