@@ -40,21 +40,13 @@ export interface DemoStrings {
     budget: string;
     seconds: string;
     minutes: string;
-    auto: string;
-    autoWithTime: string;
     rerun: string;
     show: string;
     modeReady: string;
     modeReadyHint: string;
     modeAbsent: string;
-    modeFixed: string;
     rerunHint: string;
     fromBaked: string;
-    autoChosen: string;
-    autoInfoLabel: string;
-    autoInfoTitle: string;
-    autoInfoBody: string;
-    autoInfoSource: string;
     run: string;
     cancel: string;
     reset: string;
@@ -155,24 +147,14 @@ const en: DemoStrings = {
     budget: 'Search budget',
     seconds: '{n} s',
     minutes: '{n} min',
-    auto: 'Auto',
-    autoWithTime: 'Auto · {n} s',
     rerun: 'Recalculate the result',
     show: 'Show result',
-    modeReady: 'Already calculated',
+    modeReady: 'Already calculated at every search time',
     modeReadyHint:
-      'This result is stored, so it appears at once. Recalculating runs the solver again for the time this instance is worth, and can give a different route.',
+      'Stored for 5 s, 15 s, 30 s and 1 min: change the search time and the route changes at once. Recalculating runs the solver live.',
     modeAbsent: 'Not stored yet. The solver will run, about {n} s.',
-    modeFixed: 'Fixed time. The solver will run for {n} s.',
     rerunHint: 'Run the solver again on these settings.',
     fromBaked: 'Previously computed result. No new search was needed.',
-    autoChosen: 'Auto: {n} s for {customers} customers',
-    autoInfoLabel: 'What a search budget buys',
-    autoInfoTitle: 'Fitted to the instance',
-    autoInfoBody:
-      'The solver keeps improving its route until the time runs out, but each extra second buys less. Auto stops where one more second would shorten the route by less than 0.2 %. That point is measured on this exact configuration when it has been calculated in advance, and estimated from its size otherwise.',
-    autoInfoSource:
-      'The optimal time depends on what a second of waiting is worth — here, 0.2 % of the route. Criterion from research on anytime algorithms (Zilberstein 1996); details in the project\'s state of the art.',
     run: 'Generate',
     cancel: 'Cancel',
     reset: 'Reference tour',
@@ -288,24 +270,14 @@ const fr: DemoStrings = {
     budget: 'Budget de recherche',
     seconds: '{n} s',
     minutes: '{n} min',
-    auto: 'Auto',
-    autoWithTime: 'Auto · {n} s',
     rerun: 'Recalculer le résultat',
     show: 'Afficher le résultat',
-    modeReady: 'Déjà calculée',
+    modeReady: 'Déjà calculée à chaque durée',
     modeReadyHint:
-      'Ce résultat est enregistré, il apparaît donc aussitôt. Recalculer relance le solveur pendant le temps que vaut cette instance, et peut donner un autre trajet.',
+      'Enregistrée pour 5 s, 15 s, 30 s et 1 min : changer la durée de recherche change le trajet aussitôt. Recalculer relance le solveur en direct.',
     modeAbsent: 'Pas encore enregistrée. Le solveur tournera, environ {n} s.',
-    modeFixed: 'Durée fixe. Le solveur tournera {n} s.',
     rerunHint: 'Relancer le solveur sur ces réglages.',
     fromBaked: 'Résultat déjà calculé. Aucune nouvelle recherche nécessaire.',
-    autoChosen: 'Auto : {n} s pour {customers} clients',
-    autoInfoLabel: 'Ce qu\'achète un budget de recherche',
-    autoInfoTitle: 'Ajusté à l\'instance',
-    autoInfoBody:
-      'Le solveur améliore son trajet jusqu\'à la fin du temps imparti, mais chaque seconde de plus rapporte moins. Auto s\'arrête là où une seconde de plus raccourcirait le trajet de moins de 0,2 %. Ce point est mesuré sur cette configuration précise quand elle a été calculée à l\'avance, et estimé d\'après sa taille sinon.',
-    autoInfoSource:
-      'Le temps optimal dépend de ce que vaut une seconde d\'attente — ici, 0,2 % du trajet. Critère issu de la recherche sur les algorithmes anytime (Zilberstein 1996) ; détails dans l\'état de l\'art du projet.',
     run: 'Générer',
     cancel: 'Annuler',
     reset: 'Tournée de référence',

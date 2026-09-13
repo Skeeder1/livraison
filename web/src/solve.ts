@@ -24,15 +24,6 @@ export interface SolveParams {
   timeWindows: boolean;
   /** Search budget handed to the solver. Capped, never free text. */
   budgetSeconds: number;
-  /** Where `budgetSeconds` came from.
-   *
-   *  `'fixed'` means the visitor picked one of `BUDGET_CHOICES`. `'fitted'`
-   *  means `budgetForInstance` derived it from the customer count, in which case
-   *  `budgetSeconds` still carries the resolved number — the panel, the client
-   *  deadline and the request body all want a value, not a mode. Keeping the
-   *  resolved seconds in the same field is what stops the mode from leaking into
-   *  every message and timeout that already reads it. */
-  budgetMode: 'fixed' | 'fitted';
 }
 
 export const CUSTOMERS = { min: 10, max: 60, step: 5 } as const;
@@ -46,63 +37,6 @@ export const HUB_CHOICES = [0, 1, 2, 3] as const;
  *  s'est arrêté. Les budgets courts ne convergent pas, et rien ne le disait au
  *  visiteur. */
 export const BUDGET_CHOICES = [5, 15, 30, 60] as const;
-
-/** Budgets mesurés, par nombre de clients, en secondes.
- *
- *  Mesuré, pas supposé : 180 résolutions, quatre tailles x trois flottes x trois
- *  capacites x cinq graines, chacune sous un plafond d'une minute, avec la
- *  trajectoire complete des solutions ameliorantes enregistree
- *  (`experiments/convergence.py`, journal dans `experiments/out/`).
- *
- *  Chaque budget est le plus petit dont l'ecart a ce que trouve une recherche
- *  d'une minute reste sous 0,5 % en mediane et sous 5 % au quantile 0,75, pour
- *  **toutes** les flottes et capacites mesurees a cette taille. Le critere porte
- *  sur l'ecart d'objectif et non sur la date de la derniere amelioration : le
- *  visiteur ne demande pas si la recherche a fini, il demande a combien de la
- *  meilleure tournee connue il se trouve.
- *
- *  Le resultat contredit ce que le budget par defaut supposait. Ce ne sont pas
- *  les grandes instances qui sont trop servies, ce sont les petites : dix
- *  clients convergent en deux secondes, quinze en depensent sept fois trop,
- *  tandis que soixante clients en demandent quarante-cinq et n'en recevaient
- *  que quinze.
- *
- *  La difficulte n'est indexee que sur le nombre de clients, et c'est la mesure
- *  qui l'impose : la flotte ne l'ordonne pas. A 45 clients, deux livreurs sont
- *  plus faciles que trois — moins de tournees, donc un espace de recherche plus
- *  petit — alors que l'intuition dit l'inverse. */
-const BUDGET_MEASURED: ReadonlyArray<readonly [customers: number, seconds: number]> = [
-  [10, 2],
-  [25, 20],
-  [45, 30],
-  [60, 45],
-];
-
-/** Budget de recherche ajusté à l'instance, en secondes.
- *
- *  Entre deux tailles mesurées, une interpolation linéaire. Au-delà des bornes,
- *  la valeur de la borne : extrapoler affirmerait quelque chose qui n'a pas été
- *  mesuré, et le panneau ne sort de toute façon pas de 10–60 clients.
- *
- *  Les durées viennent d'un processeur de portable sous profil « économie
- *  d'énergie », pas de la machine qui sert la démonstration. Un coude est une
- *  durée : sur un processeur deux fois plus lent il tombe deux fois plus tard.
- *  Le chiffre est donc un ordre de grandeur mesuré, pas une garantie. */
-export function budgetForInstance(customers: number): number {
-  const table = BUDGET_MEASURED;
-  if (customers <= table[0][0]) return table[0][1];
-  const last = table[table.length - 1];
-  if (customers >= last[0]) return last[1];
-  for (let i = 1; i < table.length; i += 1) {
-    const [hiC, hiS] = table[i];
-    if (customers <= hiC) {
-      const [loC, loS] = table[i - 1];
-      return Math.round(loS + ((hiS - loS) * (customers - loC)) / (hiC - loC));
-    }
-  }
-  return last[1];
-}
-
 
 /** The reference instance, so an untouched panel describes what is on screen
  *  when the visitor arrives.
@@ -122,17 +56,9 @@ export const DEFAULT_PARAMS: SolveParams = {
   hubs: 0,
   capacity: 10,
   timeWindows: false,
-  // Fitted by default. Two reasons, and the second is the stronger: it is the
-  // budget the measurements say this instance needs, and it is the only mode the
-  // pre-solved corpus can answer — so a first click returns a real tour
-  // instantly, spends no CPU, and costs the demo's daily budget nothing.
-  budgetMode: 'fitted',
-  // Ni le minimum ni le maximum : à 5 s la recherche n'a pas convergé, et la
-  // comparaison avec la tournée de référence accablerait le solveur pour une
-  // raison qui tient au budget et non au modèle.
-  // Kept in step with `budgetMode` above: this is what `budgetForInstance`
-  // returns for 45 customers, so the panel is honest before anything is solved.
-  budgetSeconds: 30,
+  // One minute on arrival: the strongest stored result first, the trade-off
+  // one step away in either direction.
+  budgetSeconds: 60,
 };
 
 /** Wall-clock slack on top of the search budget before the client gives up.
@@ -190,9 +116,11 @@ function codeForStatus(status: number): SolveErrorCode {
 
 export const SOLVE_ENDPOINT = '/api/solve';
 
-/** `force` skips the pre-solved corpus and makes the solver run. It is what the
- *  "run the solver" action passes, and the only way to get a fresh search for a
- *  configuration that is already baked. */
+/** `force` is what the "run the solver" action passes: the component reads it
+ *  to skip the pre-solved corpus and call the solver for a fresh search on a
+ *  configuration that is already stored. The solver built by `createSolve`
+ *  does not read it — it is on the signature only because it is part of the
+ *  same request. */
 export interface SolveRunOptions {
   force?: boolean;
 }
@@ -212,10 +140,7 @@ const postSolve =
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal,
-      // `budgetMode` stays on the client: the endpoint is handed a number of
-      // seconds and has no use for where it came from. Sending it would put a
-      // field in the contract that nothing reads.
-      body: JSON.stringify({ ...params, budgetMode: undefined }),
+      body: JSON.stringify(params),
     });
   } catch (cause) {
     // An abort is the caller's business (cancel or timeout), so it is rethrown
@@ -260,134 +185,23 @@ export interface SolveOptions {
   reference?: Tour;
 }
 
-/** Where the pre-solved corpus is served from. Written by
- *  `scripts/bake-delivery-configs.py` in the portfolio, one file per
- *  configuration. */
-const BAKED_BASE = '/demos/delivery/baked';
-
-/** Filename for one configuration's pre-solved tour.
- *
- *  Mirrors `cle()` in `scripts/bake-delivery-configs.py`, including the rule
- *  that a single courier cannot use a hub: a hub exists so two couriers can hand
- *  parcels over, so the endpoint drops the hubs in that case and the key has to
- *  drop them too, or a visitor asking for one courier and two hubs would read a
- *  different tour depending on where it came from.
- *
- *  `budgetSeconds` is deliberately absent. Every baked tour was solved at the
- *  fitted budget, so the corpus may only answer a request that asked for the
- *  fitted budget. Putting the budget in the key would suggest the corpus covers
- *  the four fixed durations, which it does not. */
-export function bakedKey(params: SolveParams): string {
-  const hubs = params.vehicles === 1 ? 0 : params.hubs;
-  return `c${params.customers}-v${params.vehicles}-h${hubs}-k${params.capacity}-tw${
-    params.timeWindows ? 1 : 0
-  }`;
-}
-
-/** Whether the pre-solved corpus can answer the configuration on screen.
- *
- *  `'absent'` is a perfectly normal state, not a fault: a few dozen of the
- *  7 392 configurations were refused at bake time because the tour they
- *  produce is one the canvas could not draw. What it must never be is a
- *  surprise — a visitor pressing a button labelled "show" and waiting thirty
- *  seconds has been lied to. */
-export type BakedState = 'checking' | 'ready' | 'absent' | 'fixed-budget';
-
-export interface BakedProbe {
-  state: BakedState;
-  /** The stored document when `state` is `'ready'`, so that showing it costs
-   *  no second request, and so the panel can read the instance's own measured
-   *  time off it before anything is pressed. */
-  tour?: Tour;
-}
-
-/** Asks the corpus for this configuration's document, without committing to
- *  show it.
- *
- *  A `GET` of the document rather than a `HEAD` or a manifest, and the choice
- *  is deliberate. The panel has to display the instance's own optimal search
- *  time BEFORE the visitor presses anything, and that number lives inside the
- *  document (`meta.baked.optimalSeconds`) — a `HEAD` cannot return it, and a
- *  manifest of 7 392 entries is 130 KB every visitor would pay on arrival and
- *  one more thing to keep in step with the corpus. One document is ~9 KB
- *  compressed, fetched once per slider settle, and it is exactly the bytes
- *  "Show result" would fetch anyway — so pressing it is then free.
- *
- *  Any failure reads as `'absent'`. Being wrong in that direction costs a label
- *  that undersells; being wrong the other way promises an instant tour and
- *  then makes the visitor wait. */
-export async function probeBaked(
-  params: SolveParams,
-  signal?: AbortSignal,
-): Promise<BakedProbe> {
-  // The corpus is solved exclusively in the fitted mode, so a visitor who
-  // picked one of the four fixed durations is asking for a search, full stop.
-  if (params.budgetMode !== 'fitted') return { state: 'fixed-budget' };
-  const tour = await fetchBaked(params, signal);
-  return tour ? { state: 'ready', tour } : { state: 'absent' };
-}
-
-/** This instance's own measured optimal time, when the stored document carries
- *  one. Older documents — baked at a rule-of-thumb budget before the curve was
- *  recorded — do not, and the caller falls back to `budgetForInstance`. */
-export function bakedOptimalSeconds(tour: Tour | undefined): number | null {
-  const baked = (tour?.meta as Record<string, unknown> | undefined)?.baked as
-    | { optimalSeconds?: unknown }
-    | undefined;
-  const n = baked?.optimalSeconds;
-  return typeof n === 'number' && Number.isFinite(n) && n >= 1 ? Math.round(n) : null;
-}
-
-/** True when this tour came out of the pre-solved corpus rather than a solver
- *  run just now. Read from the document, so it cannot disagree with it. */
-export function isBaked(tour: Tour): boolean {
-  return Boolean((tour.meta as Record<string, unknown> | undefined)?.baked);
-}
-
-/** Fetches the pre-solved tour for a configuration, or `null` if there is none.
- *
- *  A missing configuration is a 404 and nothing more: the corpus is built in
- *  priority order and is useful at every prefix, so "not baked yet" is a normal
- *  state rather than a fault. That is also why there is no manifest — the
- *  presence of the file IS the manifest. A malformed or truncated file is
- *  treated like a missing one: fall through to the solver rather than show a
- *  broken round. */
-async function fetchBaked(params: SolveParams, signal?: AbortSignal): Promise<Tour | null> {
-  let response: Response;
-  try {
-    response = await fetch(`${BAKED_BASE}/${bakedKey(params)}.json`, { signal });
-  } catch (cause) {
-    if ((cause as Error)?.name === 'AbortError') throw cause;
-    return null;
-  }
-  if (!response.ok) return null;
-  try {
-    const tour = (await response.json()) as Tour;
-    return validateTour(tour) ? null : tour;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Builds a solver. It runs one solve and guarantees the result is safe to
  * render: both paths go through `validateTour`, so a solver that regresses its
  * output format surfaces as an honest error instead of a blank canvas.
+ *
+ * The pre-solved corpus is no longer read here: every stored configuration
+ * keeps all four budgets in one file (`corpus.ts`), and it is the component,
+ * not this function, that decides whether the corpus can answer before ever
+ * calling the solver it builds. `runOptions.force` still exists on the
+ * signature because it travels with a request that skipped the corpus, but
+ * nothing built here branches on it any more — there is nothing left to skip.
  */
 export function createSolve(options: SolveOptions = {}): SolveFn {
   const endpoint = options.endpoint ?? SOLVE_ENDPOINT;
   const reference = options.reference;
 
-  return async (params, signal, runOptions) => {
-    // The corpus only answers for the fitted budget, and only when the visitor
-    // has not asked for a fresh run. Serving a baked 30 s tour to someone who
-    // picked "5 s" would answer a question they did not ask, and the delta card
-    // would compare against a budget that was never spent.
-    if (params.budgetMode === 'fitted' && !runOptions?.force && !options.mock) {
-      const baked = await fetchBaked(params, signal);
-      if (baked) return baked;
-    }
-
+  return async (params, signal) => {
     let tour: Tour;
     if (options.mock) {
       if (!reference) {

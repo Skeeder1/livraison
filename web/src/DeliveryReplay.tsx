@@ -14,11 +14,6 @@ import type { DemoStrings } from './strings';
 import type { Tour, Vehicle } from './tour';
 import {
   BUDGET_CHOICES,
-  budgetForInstance,
-  probeBaked,
-  bakedOptimalSeconds,
-  type BakedState,
-  isBaked,
   CAPACITY,
   CUSTOMERS,
   DEFAULT_PARAMS,
@@ -31,6 +26,15 @@ import {
   type SolveFn,
   type SolveParams,
 } from './solve';
+import {
+  corpusKey,
+  fetchCorpusFile,
+  fetchPack,
+  assembleTour,
+  isFromCorpus,
+  type CorpusFile,
+  type GeometryPack,
+} from './corpus';
 
 /*
  * Replays one solved CVRPTW instance over a Leaflet map.
@@ -250,9 +254,6 @@ function referenceParams(reference: Tour): SolveParams {
     capacity: reference.stats.capacity,
     timeWindows: reference.stats.timeWindowsBinding,
     budgetSeconds: DEFAULT_PARAMS.budgetSeconds,
-    // The frozen round was solved at a fixed budget, not a fitted one, and this
-    // object exists to describe what it actually was.
-    budgetMode: 'fixed',
   };
 }
 
@@ -399,24 +400,28 @@ export default function DeliveryReplay({
   const [params, setParams] = useState<SolveParams>(DEFAULT_PARAMS);
   const [advanced, setAdvanced] = useState(false);
   const [solving, setSolving] = useState(false);
-  /** Whether the fitted budget's explanation is showing. Hover opens it, and a
-   *  click latches it, so a touch device — which has no hover — can read it. */
-  const [budgetInfo, setBudgetInfo] = useState(false);
   /** Whether the round on screen was read from the pre-solved set rather than
    *  searched just now. Drives the note that says no search ran — a visitor
    *  should never be left thinking a stored answer was computed for them. */
   const [showingBaked, setShowingBaked] = useState(false);
-  /** Whether the corpus can answer the configuration currently composed.
+  /** Whether the corpus can answer the configuration currently composed, at
+   *  the search time currently selected.
    *
    *  Known BEFORE the button is pressed, which is the whole point: a control
    *  labelled "show" that then makes you wait thirty seconds has lied, and a
    *  "solve" that returns instantly is just as confusing. Starts as `checking`
    *  so the panel never claims either until it knows. */
-  const [mode, setMode] = useState<BakedState>('checking');
-  /** The stored document for the composed configuration, when there is one.
-   *  Fetched by the probe, so "Show result" costs nothing more, and so the
-   *  instance's own measured time can sit on the Auto button before any click. */
-  const [probed, setProbed] = useState<Tour | null>(null);
+  const [mode, setMode] = useState<'checking' | 'ready' | 'absent'>('checking');
+  /** The corpus file for the composed configuration (all four budgets) and the
+   *  geometry pack for its size, once both are in hand. */
+  const [corpus, setCorpus] = useState<{ file: CorpusFile; pack: GeometryPack } | null>(null);
+  /** Same pair, for the reference configuration, so the delta card can compare
+   *  against a tour solved at the same budget as the one on screen instead of
+   *  always the frozen round. Fetched once: the reference configuration never
+   *  changes. */
+  const [referenceCorpus, setReferenceCorpus] = useState<{ file: CorpusFile; pack: GeometryPack } | null>(
+    null
+  );
   const [solveSeconds, setSolveSeconds] = useState(0);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [swapping, setSwapping] = useState(false);
@@ -424,6 +429,19 @@ export default function DeliveryReplay({
   /** Parameters of the tour currently on screen, or null while it is the frozen
    *  reference. Doubles as the "show me the delta" flag. */
   const [applied, setApplied] = useState<SolveParams | null>(null);
+
+  useEffect(() => {
+    const c = new AbortController();
+    Promise.all([
+      fetchCorpusFile(REFERENCE_PARAMS, c.signal),
+      fetchPack(REFERENCE_PARAMS.customers, c.signal),
+    ])
+      .then(([file, pack]) => {
+        if (file && pack) setReferenceCorpus({ file, pack });
+      })
+      .catch(() => {});
+    return () => c.abort();
+  }, [REFERENCE_PARAMS]);
 
   const abortRef = useRef<AbortController | null>(null);
   const deadlineRef = useRef(false);
@@ -1253,19 +1271,12 @@ export default function DeliveryReplay({
     [reducedMotion, setPlayback]
   );
 
-  /** What "Auto" means for the configuration on screen: the instance's own
-   *  contract-optimal time when the corpus has measured it, otherwise the
-   *  size-based rule. The two can differ a lot — hubs moved one instance from
-   *  under a second to fourteen — which is the whole reason to prefer the
-   *  measurement whenever it exists. */
-  const autoSeconds = bakedOptimalSeconds(probed ?? undefined) ?? budgetForInstance(params.customers);
-
   /** Runs one solve.
    *
-   *  `force` is what the "run the solver" action passes: it skips the
-   *  pre-solved corpus so the search actually happens. Without it, a fitted
-   *  configuration that has been baked returns instantly from a static file,
-   *  which is the point — exploring the panel should cost nothing. */
+   *  `force` is what the "run the solver" action passes: it skips the corpus
+   *  so the search actually happens. Without it, a configuration that has been
+   *  stored at the current budget is assembled from the corpus instead, which
+   *  is the point — exploring the panel should cost nothing. */
   const runSolve = useCallback(async (force = false) => {
     if (abortRef.current) return;
 
@@ -1275,11 +1286,7 @@ export default function DeliveryReplay({
     setSolveSeconds(0);
     deadlineRef.current = false;
 
-    // In the fitted mode the budget sent is the instance's own measured time
-    // when the corpus has one, so a live recalculation spends what the curve
-    // says this instance is worth — not the size-based estimate.
-    const asked: SolveParams =
-      params.budgetMode === 'fitted' ? { ...params, budgetSeconds: autoSeconds } : params;
+    const asked = params;
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -1294,11 +1301,9 @@ export default function DeliveryReplay({
 
     try {
       // Already fetched by the probe: showing it must not cost a second request.
-      const next =
-        !force && probed && asked.budgetMode === 'fitted'
-          ? probed
-          : await solve(asked, controller.signal, { force });
-      setShowingBaked(isBaked(next));
+      const stored = !force && corpus ? assembleTour(corpus.file, asked.budgetSeconds, corpus.pack) : null;
+      const next = stored ?? (await solve(asked, controller.signal, { force }));
+      setShowingBaked(isFromCorpus(next));
       showTour(next, asked);
       setReady(true);
     } catch (cause) {
@@ -1315,21 +1320,32 @@ export default function DeliveryReplay({
       abortRef.current = null;
       setSolving(false);
     }
-  }, [params, showTour, solve, autoSeconds, probed]);
+  }, [params, showTour, solve, corpus]);
+
+  const instanceKey = corpusKey(params);
 
   // Re-asked whenever the composed instance changes, debounced: dragging a
   // slider crosses a dozen values and only the one it lands on is worth a
-  // request. `HEAD`, so nothing is downloaded to answer the question.
+  // request. The corpus file carries all four budgets, so this effect keys on
+  // the configuration alone — the budget is handled by the effect below it,
+  // without a second fetch.
   useEffect(() => {
     const controller = new AbortController();
     let alive = true;
     setMode('checking');
     const timer = setTimeout(() => {
-      probeBaked(params, controller.signal)
-        .then((next) => {
+      Promise.all([
+        fetchCorpusFile(params, controller.signal),
+        fetchPack(params.customers, controller.signal),
+      ])
+        .then(([file, pack]) => {
           if (!alive) return;
-          setMode(next.state);
-          setProbed(next.tour ?? null);
+          if (file && pack) {
+            setCorpus({ file, pack });
+          } else {
+            setCorpus(null);
+          }
+          setMode(file && pack && file.budgets[String(params.budgetSeconds) as '5'] ? 'ready' : 'absent');
         })
         .catch(() => {
           // An abort is this effect being superseded, which is not a failure.
@@ -1340,7 +1356,31 @@ export default function DeliveryReplay({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [params]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instanceKey]);
+
+  // The budget alone does not refetch: all four are in the file already.
+  useEffect(() => {
+    if (!corpus) return;
+    setMode(corpus.file.budgets[String(params.budgetSeconds) as '5'] ? 'ready' : 'absent');
+  }, [params.budgetSeconds, corpus]);
+
+  // Changing the search time on a round read from the corpus swaps the map at
+  // once: every budget is already in the file, so there is no reason to make
+  // the visitor press a button to see what they just asked for.
+  useEffect(() => {
+    if (!corpus || !showingBaked || solving) return;
+    const swapped = assembleTour(corpus.file, params.budgetSeconds, corpus.pack);
+    if (swapped) showTour(swapped, params);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.budgetSeconds]);
+
+  const referenceAt = useMemo(
+    () =>
+      (referenceCorpus && assembleTour(referenceCorpus.file, params.budgetSeconds, referenceCorpus.pack)) ??
+      reference,
+    [referenceCorpus, params.budgetSeconds, reference]
+  );
 
   const cancelSolve = useCallback(() => abortRef.current?.abort(), []);
 
@@ -1493,7 +1533,7 @@ export default function DeliveryReplay({
       .replace('{vehicles}', String(p.vehicles))
       .replace('{capacity}', String(p.capacity));
 
-  const deltas = applied ? buildDeltas(reference.stats, s, strings) : null;
+  const deltas = applied ? buildDeltas(referenceAt.stats, s, strings) : null;
   const failureText = failure ? describeFailure(failure, params.budgetSeconds, strings) : null;
   const blocked = failure?.retryAfter !== undefined;
 
@@ -1713,21 +1753,7 @@ export default function DeliveryReplay({
                 value={params.customers}
                 disabled={solving}
                 onChange={(e) =>
-                  setParams((p) => {
-                    // A fitted budget is a function of this slider, so it has to
-                    // move with it. Leaving it behind would show a number that
-                    // was measured for a round the visitor no longer has, which
-                    // is worse than showing nothing.
-                    const customers = Number(e.target.value);
-                    return {
-                      ...p,
-                      customers,
-                      budgetSeconds:
-                        p.budgetMode === 'fitted'
-                          ? budgetForInstance(customers)
-                          : p.budgetSeconds,
-                    };
-                  })
+                  setParams((p) => ({ ...p, customers: Number(e.target.value) }))
                 }
                 style={{
                   ['--dr-progress' as string]: `${
@@ -1840,7 +1866,7 @@ export default function DeliveryReplay({
                 </span>
                 <div className="dr-seg" role="group" aria-labelledby="dr-budget-label">
                   {BUDGET_CHOICES.map((n) => {
-                    const active = params.budgetMode === 'fixed' && n === params.budgetSeconds;
+                    const active = n === params.budgetSeconds;
                     return (
                       <button
                         key={n}
@@ -1848,9 +1874,7 @@ export default function DeliveryReplay({
                         className={`dr-segbtn${active ? ' is-active' : ''}`}
                         aria-pressed={active}
                         disabled={solving}
-                        onClick={() =>
-                          setParams((p) => ({ ...p, budgetMode: 'fixed', budgetSeconds: n }))
-                        }
+                        onClick={() => setParams((p) => ({ ...p, budgetSeconds: n }))}
                       >
                         {n >= 60
                           ? strings.solve.minutes.replace('{n}', String(n / 60))
@@ -1858,69 +1882,7 @@ export default function DeliveryReplay({
                       </button>
                     );
                   })}
-                  {/* The fifth item names no duration: it derives one from the
-                      instance. That is the whole reason it carries the only
-                      explanation on this panel a visitor cannot read off the
-                      control itself, and the reason the info trigger is a
-                      SIBLING of the button rather than a child — interactive
-                      content nested in a button is invalid, and a screen reader
-                      would announce one control where there are two. */}
-                  <span className="dr-segwrap">
-                    <button
-                      type="button"
-                      className={`dr-segbtn dr-segbtn--auto${
-                        params.budgetMode === 'fitted' ? ' is-active' : ''
-                      }`}
-                      aria-pressed={params.budgetMode === 'fitted'}
-                      disabled={solving}
-                      onClick={() =>
-                        setParams((p) => ({
-                          ...p,
-                          budgetMode: 'fitted',
-                          budgetSeconds: budgetForInstance(p.customers),
-                        }))
-                      }
-                    >
-                      {/* The time this configuration takes, on the control
-                          itself, so the visitor never has to look for it. The
-                          "Auto" prefix is what keeps it from reading as a fifth
-                          fixed duration: "Auto · 30 s" is a derived value, "30 s"
-                          next to it is a chosen one. It follows the customer
-                          slider whether or not Auto is selected, so the visitor
-                          sees what Auto would ask for before picking it. */}
-                      {strings.solve.autoWithTime.replace('{n}', String(autoSeconds))}
-                    </button>
-                    <button
-                      type="button"
-                      className="dr-info"
-                      aria-label={strings.solve.autoInfoLabel}
-                      aria-expanded={budgetInfo}
-                      onClick={() => setBudgetInfo((open) => !open)}
-                      onMouseEnter={() => setBudgetInfo(true)}
-                      onMouseLeave={() => setBudgetInfo(false)}
-                      onFocus={() => setBudgetInfo(true)}
-                      onBlur={() => setBudgetInfo(false)}
-                    >
-                      i
-                    </button>
-                    {budgetInfo && (
-                      <span className="dr-infotip" role="tooltip">
-                        <span className="dr-infotip-head">{strings.solve.autoInfoTitle}</span>
-                        {strings.solve.autoInfoBody}
-                        <span className="dr-infotip-source">
-                          {strings.solve.autoInfoSource}
-                        </span>
-                      </span>
-                    )}
-                  </span>
                 </div>
-                {params.budgetMode === 'fitted' && (
-                  <span className="dr-field-note">
-                    {strings.solve.autoChosen
-                      .replace('{n}', String(autoSeconds))
-                      .replace('{customers}', String(params.customers))}
-                  </span>
-                )}
               </div>
             </div>
           )}
@@ -1940,10 +1902,7 @@ export default function DeliveryReplay({
             ) : (
               <>
                 <Clock size={13} aria-hidden="true" />
-                <span>
-                  {(mode === 'fixed-budget' ? strings.solve.modeFixed : strings.solve.modeAbsent)
-                    .replace('{n}', String(params.budgetSeconds))}
-                </span>
+                <span>{strings.solve.modeAbsent.replace('{n}', String(params.budgetSeconds))}</span>
               </>
             )}
           </p>
