@@ -83,6 +83,7 @@ def trajectoire(
     seed: int,
     budget_seconds: int,
     road_matrix: bool,
+    hubs: int = 0,
 ) -> tuple[list[tuple[int, int]], bool]:
     """
     Résout une instance et rend la suite ``(date_ms, objectif)`` des solutions.
@@ -110,7 +111,7 @@ def trajectoire(
         Config.update(
             NUM_CUSTOMERS=customers,
             NUM_VEHICLES=vehicles,
-            NUM_HUBS=0,
+            NUM_HUBS=hubs,
             VEHICLE_CAPACITY_MIN=float(capacity),
             VEHICLE_CAPACITY_MAX=float(capacity),
             TW_END_MIN=OPEN_TW,
@@ -266,9 +267,11 @@ def regle(rows: list[dict[str, Any]]) -> dict[int, int]:
 
     retenus = {}
     for clients, lignes in sorted(par_taille.items()):
-        cellules: dict[tuple[int, int], list[dict[str, Any]]] = {}
+        cellules: dict[tuple[int, int, int], list[dict[str, Any]]] = {}
         for ligne in lignes:
-            cellules.setdefault((ligne["vehicles"], ligne["capacity"]), []).append(ligne)
+            cellules.setdefault(
+                (ligne["vehicles"], ligne["capacity"], ligne.get("hubs", 0)), []
+            ).append(ligne)
         choisi = max(BUDGETS_CANDIDATS)
         for budget in BUDGETS_CANDIDATS:
             convient = True
@@ -336,6 +339,7 @@ def plan(
     vehicules: list[int],
     capacites: list[int],
     graines: list[int],
+    hubs: list[int] | None = None,
 ) -> list[dict[str, int]]:
     """
     Développe la grille en exécutions élémentaires, ordre déterministe.
@@ -349,16 +353,17 @@ def plan(
     que le panneau propose, qui va de 5 à 20.
     """
     return [
-        {"customers": c, "vehicles": v, "capacity": k, "seed": s}
+        {"customers": c, "vehicles": v, "capacity": k, "hubs": h, "seed": s}
         for c in tailles
         for v in vehicules
         for k in capacites
+        for h in (hubs or [0])
         for s in graines
     ]
 
 
-def cle(run: dict[str, Any]) -> tuple[int, int, int, int]:
-    return (run["customers"], run["vehicles"], run["capacity"], run["seed"])
+def cle(run: dict[str, Any]) -> tuple[int, int, int, int, int]:
+    return (run["customers"], run["vehicles"], run["capacity"], run.get("hubs", 0), run["seed"])
 
 
 def analyser(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -401,7 +406,7 @@ def analyser(rows: list[dict[str, Any]]) -> dict[str, Any]:
     cellules: dict[tuple[int, int], list[dict[str, Any]]] = {}
     for row in rows:
         cellules.setdefault(
-            (row["customers"], row["vehicles"], row["capacity"]), []
+            (row["customers"], row["vehicles"], row["capacity"], row.get("hubs", 0)), []
         ).append(row)
 
     def quantile(valeurs: list[int], q: float) -> int:
@@ -414,10 +419,10 @@ def analyser(rows: list[dict[str, Any]]) -> dict[str, Any]:
         return round(ordonnees[bas] + (ordonnees[haut] - ordonnees[bas]) * (rang - bas))
 
     resume = {}
-    for (clients, vehicules, capacite), lignes in sorted(cellules.items()):
+    for (clients, vehicules, capacite, hubs), lignes in sorted(cellules.items()):
         derniere = [ligne["derniere_amelioration_ms"] for ligne in lignes]
         coude1 = [ligne["coude_1pct_ms"] for ligne in lignes]
-        resume[f"{clients}c/{vehicules}v/cap{capacite}"] = {
+        resume[f"{clients}c/{vehicules}v/cap{capacite}/h{hubs}"] = {
             "chargements_par_vehicule": round(clients / (vehicules * capacite), 2),
             "graines": len(lignes),
             "derniere_amelioration_ms": {
@@ -443,6 +448,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--vehicules", type=int, nargs="+", default=[2, 3, 5])
     parser.add_argument("--capacites", type=int, nargs="+", default=[5, 10, 20])
     parser.add_argument("--graines", type=int, nargs="+", default=[1, 2, 3, 4, 5])
+    parser.add_argument(
+        "--hubs", type=int, nargs="+", default=[0],
+        help="Points de transfert. La campagne de référence n'en avait aucun : "
+             "la règle de budget n'a jamais été mesurée avec des hubs.",
+    )
     parser.add_argument(
         "--euclidien",
         action="store_true",
@@ -475,17 +485,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'clients':>8} {'budget':>8}   détail par cellule (médiane/q75 à ce budget)")
         for clients, budget in retenus.items():
             lignes = [r for r in rows if r["customers"] == clients]
-            cellules: dict[tuple[int, int], list[dict[str, Any]]] = {}
+            cellules: dict[tuple[int, int, int], list[dict[str, Any]]] = {}
             for ligne in lignes:
-                cellules.setdefault((ligne["vehicles"], ligne["capacity"]), []).append(ligne)
+                cellules.setdefault(
+                    (ligne["vehicles"], ligne["capacity"], ligne.get("hubs", 0)), []
+                ).append(ligne)
             detail = []
-            for (v, k), cellule in sorted(cellules.items()):
+            for (v, k, h), cellule in sorted(cellules.items()):
                 valeurs = ecarts(cellule, budget)
                 if valeurs is None:
-                    detail.append(f"{v}v/c{k}:pas de solution")
+                    detail.append(f"{v}v/c{k}/h{h}:pas de solution")
                 else:
                     detail.append(
-                        f"{v}v/c{k}:{_quantile(valeurs, 0.5):.2f}/{_quantile(valeurs, 0.75):.2f}"
+                        f"{v}v/c{k}/h{h}:{_quantile(valeurs, 0.5):.2f}/{_quantile(valeurs, 0.75):.2f}"
                     )
             print(f"{clients:>8} {budget:>7} s   " + "  ".join(detail))
         return 0
@@ -509,7 +521,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     road_matrix = not args.euclidien
-    a_faire = plan(args.tailles, args.vehicules, args.capacites, args.graines)
+    a_faire = plan(args.tailles, args.vehicules, args.capacites, args.graines, args.hubs)
     deja = {
         cle(r)
         for r in read_rows(args.out)
@@ -537,6 +549,7 @@ def main(argv: list[str] | None = None) -> int:
                 seed=run["seed"],
                 budget_seconds=args.budget,
                 road_matrix=road_matrix,
+                hubs=run["hubs"],
             )
             ameliorants = ameliorations(points)
             budget_ms = args.budget * 1000
