@@ -1945,7 +1945,7 @@ export default function DeliveryReplay({
             {mode === 'ready' && (
               <button
                 type="button"
-                className="dr-btn"
+                className="dr-btn dr-btn--recalc"
                 onClick={() => runSolve(true)}
                 disabled={solving || blocked}
                 title={strings.solve.rerunHint}
