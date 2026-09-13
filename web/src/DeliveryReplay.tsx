@@ -361,6 +361,21 @@ function buildDeltas(ref: Tour['stats'], now: Tour['stats'], strings: DemoString
   ];
 }
 
+/** Whether a corpus file was baked for these parameters, ignoring the budget
+ *  (a file answers all four). The probe clears `corpus` the instant the
+ *  configuration changes, but a component render between that clear and the
+ *  next fetch landing is not the only way a stale file could be read — this
+ *  is the second check, comparing the file's own recorded configuration
+ *  against what is being asked for right now, rather than trusting that
+ *  `corpus` in state is never behind `params`. */
+function corpusFileMatches(file: CorpusFile, params: SolveParams): boolean {
+  const baked = (file.meta as Record<string, unknown> | undefined)?.baked as
+    | { config?: { customers: number; vehicles: number; hubs: number; capacity: number; timeWindows: boolean } }
+    | undefined;
+  const config = baked?.config;
+  return Boolean(config) && corpusKey(config!) === corpusKey(params);
+}
+
 interface FeedEvent {
   at: number;
   vehicle: number | null;
@@ -1301,7 +1316,13 @@ export default function DeliveryReplay({
 
     try {
       // Already fetched by the probe: showing it must not cost a second request.
-      const stored = !force && corpus ? assembleTour(corpus.file, asked.budgetSeconds, corpus.pack) : null;
+      // The file must be the one for these parameters. A probe still in flight
+      // leaves the previous file in state for a few hundred milliseconds;
+      // assembling it would show the wrong round under the right label.
+      const stored =
+        !force && corpus && corpusFileMatches(corpus.file, asked)
+          ? assembleTour(corpus.file, asked.budgetSeconds, corpus.pack)
+          : null;
       const next = stored ?? (await solve(asked, controller.signal, { force }));
       setShowingBaked(isFromCorpus(next));
       showTour(next, asked);
@@ -1333,6 +1354,11 @@ export default function DeliveryReplay({
     const controller = new AbortController();
     let alive = true;
     setMode('checking');
+    // Cleared synchronously, not just reset to 'checking': the debounce plus
+    // fetch latency below is a window where the *previous* configuration's
+    // file would otherwise still sit in state, readable by a click on the
+    // primary button in the meantime.
+    setCorpus(null);
     const timer = setTimeout(() => {
       Promise.all([
         fetchCorpusFile(params, controller.signal),
@@ -1369,7 +1395,7 @@ export default function DeliveryReplay({
   // once: every budget is already in the file, so there is no reason to make
   // the visitor press a button to see what they just asked for.
   useEffect(() => {
-    if (!corpus || !showingBaked || solving) return;
+    if (!corpus || !showingBaked || solving || !corpusFileMatches(corpus.file, params)) return;
     const swapped = assembleTour(corpus.file, params.budgetSeconds, corpus.pack);
     if (swapped) showTour(swapped, params);
     // eslint-disable-next-line react-hooks/exhaustive-deps
