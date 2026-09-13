@@ -145,6 +145,7 @@ def solve_scenario(
     workdir: Path,
     fetch_roads: bool = True,
     road_matrix: bool = False,
+    on_solution: Any = None,
 ) -> dict[str, Any]:
     """
     Génère un scénario, le résout **une fois**, et retourne la tournée mise en forme.
@@ -217,6 +218,12 @@ def solve_scenario(
         dessiner le réseau par-dessus ; les tournées ne sont alors pas celles
         qu'un coursier suivrait. Une seule requête OSRM par instance, mise en
         cache. Retombe sur l'euclidien, en le signalant, si OSRM est injoignable.
+    :param on_solution: Rappel transmis tel quel à `solve_vrp`, appelé à chaque
+        solution améliorante avec le modèle en argument. C'est ce qui permet
+        d'observer la trajectoire de la recherche — et de l'arrêter depuis le
+        rappel par `routing.solver().FinishCurrentSearch()` quand elle stagne,
+        ce qu'OR-Tools ne sait pas faire nativement. `budget_seconds` reste le
+        plafond dur.
     :param fetch_roads: Interroge OSRM pour tracer les tournées sur le réseau
         routier. Une requête HTTP par véhicule vers un serveur public, avec cache
         disque. À faux, les segments sont des droites : le document reste valide,
@@ -268,7 +275,7 @@ def solve_scenario(
         data['lns_time_limit_ms'] = LNS_TIME_LIMIT_MS
 
         started = time.monotonic()
-        manager, routing, solution = solve_vrp(data)
+        manager, routing, solution = solve_vrp(data, on_solution=on_solution)
         elapsed = time.monotonic() - started
 
         if solution is None:

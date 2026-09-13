@@ -160,7 +160,8 @@ const en: DemoStrings = {
     rerun: 'Recalculate the result',
     show: 'Show result',
     modeReady: 'Already calculated',
-    modeReadyHint: 'This result is stored, so it appears at once. Recalculating runs the solver again on the same settings and can give a different route.',
+    modeReadyHint:
+      'This result is stored, so it appears at once. Recalculating runs the solver again for the time this instance is worth, and can give a different route.',
     modeAbsent: 'Not stored yet. The solver will run, about {n} s.',
     modeFixed: 'Fixed time. The solver will run for {n} s.',
     rerunHint: 'Run the solver again on these settings.',
@@ -169,9 +170,9 @@ const en: DemoStrings = {
     autoInfoLabel: 'What a search budget buys',
     autoInfoTitle: 'Fitted to the instance',
     autoInfoBody:
-      'The budget is a ceiling, not a stopping rule: the search keeps improving its best tour until the clock runs out. How long it needs varies enormously with size — ten customers settle in about two seconds, sixty still gain ground at forty-five. This setting asks for the measured time for the size you chose, so a small round stops paying for seconds it cannot use and a large one stops being cut off early.',
+      'The solver keeps improving its route until the time runs out, but each extra second buys less. Auto stops where one more second would shorten the route by less than 0.2 %. That point is measured on this exact configuration when it has been calculated in advance, and estimated from its size otherwise.',
     autoInfoSource:
-      'Read off convergence curves from {runs} solves: the smallest budget within 0.5% of a one-minute search for the typical instance, and 5% for three in four.',
+      'The optimal time depends on what a second of waiting is worth — here, 0.2 % of the route. Criterion from research on anytime algorithms (Zilberstein 1996); details in the project\'s state of the art.',
     run: 'Generate',
     cancel: 'Cancel',
     reset: 'Reference tour',
@@ -292,7 +293,8 @@ const fr: DemoStrings = {
     rerun: 'Recalculer le résultat',
     show: 'Afficher le résultat',
     modeReady: 'Déjà calculée',
-    modeReadyHint: 'Ce résultat est enregistré, il apparaît donc aussitôt. Recalculer relance le solveur sur les mêmes réglages et peut donner un autre trajet.',
+    modeReadyHint:
+      'Ce résultat est enregistré, il apparaît donc aussitôt. Recalculer relance le solveur pendant le temps que vaut cette instance, et peut donner un autre trajet.',
     modeAbsent: 'Pas encore enregistrée. Le solveur tournera, environ {n} s.',
     modeFixed: 'Durée fixe. Le solveur tournera {n} s.',
     rerunHint: 'Relancer le solveur sur ces réglages.',
@@ -301,9 +303,9 @@ const fr: DemoStrings = {
     autoInfoLabel: 'Ce qu\'achète un budget de recherche',
     autoInfoTitle: 'Ajusté à l\'instance',
     autoInfoBody:
-      'Le budget est un plafond, pas un critère d\'arrêt : la recherche améliore sa meilleure tournée jusqu\'à la fin du temps imparti. Le temps qu\'il lui faut varie énormément avec la taille — dix clients sont réglés en deux secondes environ, soixante gagnent encore du terrain à quarante-cinq. Ce réglage demande le temps mesuré pour la taille choisie : une petite tournée cesse de payer des secondes inutilisables, une grande cesse d\'être coupée trop tôt.',
+      'Le solveur améliore son trajet jusqu\'à la fin du temps imparti, mais chaque seconde de plus rapporte moins. Auto s\'arrête là où une seconde de plus raccourcirait le trajet de moins de 0,2 %. Ce point est mesuré sur cette configuration précise quand elle a été calculée à l\'avance, et estimé d\'après sa taille sinon.',
     autoInfoSource:
-      'Lu sur les courbes de convergence de {runs} résolutions : le plus petit budget à 0,5 % d\'une recherche d\'une minute pour l\'instance typique, et à 5 % pour trois sur quatre.',
+      'Le temps optimal dépend de ce que vaut une seconde d\'attente — ici, 0,2 % du trajet. Critère issu de la recherche sur les algorithmes anytime (Zilberstein 1996) ; détails dans l\'état de l\'art du projet.',
     run: 'Générer',
     cancel: 'Annuler',
     reset: 'Tournée de référence',

@@ -286,42 +286,56 @@ export function bakedKey(params: SolveParams): string {
 
 /** Whether the pre-solved corpus can answer the configuration on screen.
  *
- *  `'absent'` is a perfectly normal state, not a fault: 54 of the 7 392
- *  configurations were refused at bake time because the tour they produce is one
- *  the canvas could not draw, and any configuration can be widened into the plan
- *  later. What it must never be is a surprise — a visitor pressing a button
- *  labelled "show" and waiting thirty seconds has been lied to. */
+ *  `'absent'` is a perfectly normal state, not a fault: a few dozen of the
+ *  7 392 configurations were refused at bake time because the tour they
+ *  produce is one the canvas could not draw. What it must never be is a
+ *  surprise — a visitor pressing a button labelled "show" and waiting thirty
+ *  seconds has been lied to. */
 export type BakedState = 'checking' | 'ready' | 'absent' | 'fixed-budget';
 
-/** Asks whether the corpus holds this configuration, without downloading it.
+export interface BakedProbe {
+  state: BakedState;
+  /** The stored document when `state` is `'ready'`, so that showing it costs
+   *  no second request, and so the panel can read the instance's own measured
+   *  time off it before anything is pressed. */
+  tour?: Tour;
+}
+
+/** Asks the corpus for this configuration's document, without committing to
+ *  show it.
  *
- *  A `HEAD` request rather than a manifest, and the choice is deliberate. A
- *  manifest of 7 392 keys is 130 KB every visitor would pay for on arrival, and
- *  it would be a second thing to keep in step with the corpus — a stale entry
- *  would make the panel promise an instant answer it cannot give. Asking the
- *  server is a few hundred bytes, needs nothing kept in sync, and is right by
- *  construction.
+ *  A `GET` of the document rather than a `HEAD` or a manifest, and the choice
+ *  is deliberate. The panel has to display the instance's own optimal search
+ *  time BEFORE the visitor presses anything, and that number lives inside the
+ *  document (`meta.baked.optimalSeconds`) — a `HEAD` cannot return it, and a
+ *  manifest of 7 392 entries is 130 KB every visitor would pay on arrival and
+ *  one more thing to keep in step with the corpus. One document is ~9 KB
+ *  compressed, fetched once per slider settle, and it is exactly the bytes
+ *  "Show result" would fetch anyway — so pressing it is then free.
  *
  *  Any failure reads as `'absent'`. Being wrong in that direction costs a label
- *  that undersells; being wrong the other way promises an instant tour and then
- *  makes the visitor wait. */
-export async function bakedState(
+ *  that undersells; being wrong the other way promises an instant tour and
+ *  then makes the visitor wait. */
+export async function probeBaked(
   params: SolveParams,
   signal?: AbortSignal,
-): Promise<BakedState> {
-  // The corpus is solved exclusively at the fitted budget, so a visitor who
+): Promise<BakedProbe> {
+  // The corpus is solved exclusively in the fitted mode, so a visitor who
   // picked one of the four fixed durations is asking for a search, full stop.
-  if (params.budgetMode !== 'fitted') return 'fixed-budget';
-  try {
-    const response = await fetch(`${BAKED_BASE}/${bakedKey(params)}.json`, {
-      method: 'HEAD',
-      signal,
-    });
-    return response.ok ? 'ready' : 'absent';
-  } catch (cause) {
-    if ((cause as Error)?.name === 'AbortError') throw cause;
-    return 'absent';
-  }
+  if (params.budgetMode !== 'fitted') return { state: 'fixed-budget' };
+  const tour = await fetchBaked(params, signal);
+  return tour ? { state: 'ready', tour } : { state: 'absent' };
+}
+
+/** This instance's own measured optimal time, when the stored document carries
+ *  one. Older documents — baked at a rule-of-thumb budget before the curve was
+ *  recorded — do not, and the caller falls back to `budgetForInstance`. */
+export function bakedOptimalSeconds(tour: Tour | undefined): number | null {
+  const baked = (tour?.meta as Record<string, unknown> | undefined)?.baked as
+    | { optimalSeconds?: unknown }
+    | undefined;
+  const n = baked?.optimalSeconds;
+  return typeof n === 'number' && Number.isFinite(n) && n >= 1 ? Math.round(n) : null;
 }
 
 /** True when this tour came out of the pre-solved corpus rather than a solver
@@ -338,7 +352,7 @@ export function isBaked(tour: Tour): boolean {
  *  presence of the file IS the manifest. A malformed or truncated file is
  *  treated like a missing one: fall through to the solver rather than show a
  *  broken round. */
-async function fetchBaked(params: SolveParams, signal: AbortSignal): Promise<Tour | null> {
+async function fetchBaked(params: SolveParams, signal?: AbortSignal): Promise<Tour | null> {
   let response: Response;
   try {
     response = await fetch(`${BAKED_BASE}/${bakedKey(params)}.json`, { signal });

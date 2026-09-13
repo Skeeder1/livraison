@@ -15,7 +15,8 @@ import type { Tour, Vehicle } from './tour';
 import {
   BUDGET_CHOICES,
   budgetForInstance,
-  bakedState,
+  probeBaked,
+  bakedOptimalSeconds,
   type BakedState,
   isBaked,
   CAPACITY,
@@ -412,6 +413,10 @@ export default function DeliveryReplay({
    *  "solve" that returns instantly is just as confusing. Starts as `checking`
    *  so the panel never claims either until it knows. */
   const [mode, setMode] = useState<BakedState>('checking');
+  /** The stored document for the composed configuration, when there is one.
+   *  Fetched by the probe, so "Show result" costs nothing more, and so the
+   *  instance's own measured time can sit on the Auto button before any click. */
+  const [probed, setProbed] = useState<Tour | null>(null);
   const [solveSeconds, setSolveSeconds] = useState(0);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [swapping, setSwapping] = useState(false);
@@ -1248,6 +1253,13 @@ export default function DeliveryReplay({
     [reducedMotion, setPlayback]
   );
 
+  /** What "Auto" means for the configuration on screen: the instance's own
+   *  contract-optimal time when the corpus has measured it, otherwise the
+   *  size-based rule. The two can differ a lot — hubs moved one instance from
+   *  under a second to fourteen — which is the whole reason to prefer the
+   *  measurement whenever it exists. */
+  const autoSeconds = bakedOptimalSeconds(probed ?? undefined) ?? budgetForInstance(params.customers);
+
   /** Runs one solve.
    *
    *  `force` is what the "run the solver" action passes: it skips the
@@ -1263,6 +1275,12 @@ export default function DeliveryReplay({
     setSolveSeconds(0);
     deadlineRef.current = false;
 
+    // In the fitted mode the budget sent is the instance's own measured time
+    // when the corpus has one, so a live recalculation spends what the curve
+    // says this instance is worth — not the size-based estimate.
+    const asked: SolveParams =
+      params.budgetMode === 'fitted' ? { ...params, budgetSeconds: autoSeconds } : params;
+
     const controller = new AbortController();
     abortRef.current = controller;
     // The server owns the search budget; this is only the client's patience.
@@ -1271,12 +1289,15 @@ export default function DeliveryReplay({
         deadlineRef.current = true;
         controller.abort();
       },
-      (params.budgetSeconds + TIMEOUT_GRACE_SECONDS) * 1000
+      (asked.budgetSeconds + TIMEOUT_GRACE_SECONDS) * 1000
     );
-    const asked = params;
 
     try {
-      const next = await solve(asked, controller.signal, { force });
+      // Already fetched by the probe: showing it must not cost a second request.
+      const next =
+        !force && probed && asked.budgetMode === 'fitted'
+          ? probed
+          : await solve(asked, controller.signal, { force });
       setShowingBaked(isBaked(next));
       showTour(next, asked);
       setReady(true);
@@ -1294,7 +1315,7 @@ export default function DeliveryReplay({
       abortRef.current = null;
       setSolving(false);
     }
-  }, [params, showTour, solve]);
+  }, [params, showTour, solve, autoSeconds, probed]);
 
   // Re-asked whenever the composed instance changes, debounced: dragging a
   // slider crosses a dozen values and only the one it lands on is worth a
@@ -1304,9 +1325,11 @@ export default function DeliveryReplay({
     let alive = true;
     setMode('checking');
     const timer = setTimeout(() => {
-      bakedState(params, controller.signal)
+      probeBaked(params, controller.signal)
         .then((next) => {
-          if (alive) setMode(next);
+          if (!alive) return;
+          setMode(next.state);
+          setProbed(next.tour ?? null);
         })
         .catch(() => {
           // An abort is this effect being superseded, which is not a failure.
@@ -1865,10 +1888,7 @@ export default function DeliveryReplay({
                           next to it is a chosen one. It follows the customer
                           slider whether or not Auto is selected, so the visitor
                           sees what Auto would ask for before picking it. */}
-                      {strings.solve.autoWithTime.replace(
-                        '{n}',
-                        String(budgetForInstance(params.customers)),
-                      )}
+                      {strings.solve.autoWithTime.replace('{n}', String(autoSeconds))}
                     </button>
                     <button
                       type="button"
@@ -1888,7 +1908,7 @@ export default function DeliveryReplay({
                         <span className="dr-infotip-head">{strings.solve.autoInfoTitle}</span>
                         {strings.solve.autoInfoBody}
                         <span className="dr-infotip-source">
-                          {strings.solve.autoInfoSource.replace('{runs}', '180')}
+                          {strings.solve.autoInfoSource}
                         </span>
                       </span>
                     )}
@@ -1897,7 +1917,7 @@ export default function DeliveryReplay({
                 {params.budgetMode === 'fitted' && (
                   <span className="dr-field-note">
                     {strings.solve.autoChosen
-                      .replace('{n}', String(params.budgetSeconds))
+                      .replace('{n}', String(autoSeconds))
                       .replace('{customers}', String(params.customers))}
                   </span>
                 )}
