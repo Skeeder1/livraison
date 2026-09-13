@@ -284,55 +284,185 @@ def solve_scenario(
                 f"pour {settings['customers']} clients et {settings['vehicles']} véhicules"
             )
 
-        results = get_results(data, manager, routing, solution, verbose=False)
-        results['per_livreur']['slacks'] = compute_slacks(data, manager, routing, solution)
-        results['per_livreur']['cumulative_loads'] = compute_cumulative_loads(data, results)
+        return _document(data, manager, routing, solution,
+                         settings=settings, elapsed=elapsed, fetch_roads=fetch_roads)
+    finally:
+        Config.update(**saved)
 
-        num_real = data['num_real_vehicles']
-        road_legs = {}
-        if fetch_roads:
-            road_legs = build_road_legs(
-                data['locations'],
-                results['per_livreur']['routes'][:num_real],
+
+def _document(data, manager, routing, assignment, *, settings, elapsed, fetch_roads):
+    """
+    Le document de tournée d'une affectation, par le post-traitement existant.
+
+    Extrait de `solve_scenario` pour être appelé plusieurs fois sur des
+    affectations reconstruites : la seule différence entre « la solution du
+    solveur » et « l'état à 15 s » est l'affectation, tout le reste — horaires,
+    charges, statistiques, mise en forme — est le même code.
+    """
+    results = get_results(data, manager, routing, assignment, verbose=False)
+    results['per_livreur']['slacks'] = compute_slacks(data, manager, routing, assignment)
+    results['per_livreur']['cumulative_loads'] = compute_cumulative_loads(data, results)
+
+    num_real = data['num_real_vehicles']
+    road_legs = {}
+    if fetch_roads:
+        road_legs = build_road_legs(
+            data['locations'],
+            results['per_livreur']['routes'][:num_real],
+        )
+
+    source = {
+        'results': results,
+        'locations': data['locations'],
+        'time_windows': data['time_windows'],
+        'demands': data['demands'],
+        # Capacité nulle pour les véhicules fictifs : c'est la convention de
+        # la charge utile historique, conservée pour qu'un même document soit
+        # lisible par les deux producteurs.
+        'vehicle_capacities': list(data['vehicle_capacities']) + [0] * (data['num_vehicles'] - num_real),
+        'num_vehicles': data['num_vehicles'],
+        'num_real_vehicles': num_real,
+        'depot': data['depot'],
+        'num_customers': data['num_customers'],
+        'num_hubs': data['num_hubs'],
+        'hub_deposits': data.get('hub_deposits', []),
+        'hub_pickups': data.get('hub_pickups', []),
+        'unload_depots': data.get('unload_depots', []),
+        'time_per_demand_unit': data['time_per_demand_unit'],
+        'road_legs': road_legs,
+    }
+    source = convert_to_json_serializable(source)
+
+    # Texte de provenance en anglais : il part tel quel dans la charge utile
+    # affichée par le site, dont l'interface est anglophone.
+    meta = {
+        'source': 'https://github.com/Skeeder1/livraison',
+        'solver': f'Google OR-Tools {_ortools_version()}, RoutingModel (CVRPTW)',
+        'generatedFrom': 'optimizer.scenario.solve_scenario',
+        'seed': settings['seed'],
+        'note': (
+            'Solved on demand: one OR-Tools run under a fixed time budget. '
+            'The hub strategy is not arbitrated and no baseline is computed.'
+        ),
+        'budgetSeconds': settings['budget_seconds'],
+        'solveSeconds': round(elapsed, 2),
+        # L'objectif du solveur pour cette affectation. Pour une tournée
+        # reconstruite depuis son ordre de passage, c'est ce qui prouve que la
+        # reconstruction est exacte : il doit valoir l'objectif relevé au moment
+        # de l'instantané, à l'unité près.
+        'objective': int(assignment.ObjectiveValue()),
+    }
+    return build_tour(source, meta)
+
+
+def solve_scenario_at_budgets(
+    params: dict[str, Any],
+    *,
+    workdir: Path,
+    budgets: tuple[int, ...] = (5, 15, 30, 60),
+    road_matrix: bool = True,
+) -> tuple[dict[int, dict[str, Any] | None], list[list[int]]]:
+    """
+    Une recherche, plusieurs budgets : la tournée à chaque budget demandé.
+
+    Une recherche de 15 s est le **préfixe exact** d'une recherche de 60 s sur
+    la même instance — le solveur ignore son plafond (vérifié,
+    `experiments/convergence.py`). On lance donc une seule recherche au plus
+    grand des budgets, on relève l'ordre des tournées à chaque amélioration, et
+    on reconstruit l'affectation complète de chaque instantané par
+    `ReadAssignmentFromRoutes`. Vérifié : objectif et post-traitement identiques
+    à ceux du solveur, hubs et rechargements compris.
+
+    Pas de géométrie routière ici (`fetch_roads` implicite à faux) : l'appelant
+    qui stocke des tournées gère les tracés lui-même, par paire de coordonnées,
+    pour ne pas demander quatre fois les mêmes rues.
+
+    :return: ``({budget: document ou None}, courbe)``. `None` pour un budget
+        auquel aucune solution n'existait encore. La courbe est la suite
+        ``[[ms, objectif], …]`` des améliorations.
+    """
+    settings = _normalize_params({**params, "budget_seconds": max(budgets)})
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    if settings['time_windows_binding']:
+        tw_end_min, tw_end_max = BINDING_TW_END_MIN, BINDING_TW_END_MAX
+    else:
+        tw_end_min, tw_end_max = OPEN_TW_END, OPEN_TW_END
+
+    saved = {key: getattr(Config, key) for key in (
+        'NUM_CUSTOMERS', 'NUM_VEHICLES', 'NUM_HUBS',
+        'VEHICLE_CAPACITY_MIN', 'VEHICLE_CAPACITY_MAX',
+        'TW_END_MIN', 'TW_END_MAX', 'RANDOM_SEED',
+    )}
+    try:
+        Config.update(
+            NUM_CUSTOMERS=settings['customers'],
+            NUM_VEHICLES=settings['vehicles'],
+            NUM_HUBS=settings['hubs'],
+            VEHICLE_CAPACITY_MIN=float(settings['capacity']),
+            VEHICLE_CAPACITY_MAX=float(settings['capacity']),
+            TW_END_MIN=tw_end_min,
+            TW_END_MAX=tw_end_max,
+            RANDOM_SEED=settings['seed'],
+        )
+        create_toy_data(str(workdir), verbose=False, road_matrix=road_matrix)
+        data = load_data(str(workdir))
+        data['time_limit'] = int(settings['budget_seconds'])
+        data['lns_time_limit_ms'] = LNS_TIME_LIMIT_MS
+
+        # Instantanés : (date_ms, objectif, ordre des tournées en indices).
+        snapshots: list[tuple[int, int, list[list[int]]]] = []
+        meilleur = [None]
+        started = time.monotonic()
+
+        def observer(routing):
+            objectif = routing.CostVar().Max()
+            if meilleur[0] is not None and objectif >= meilleur[0]:
+                return
+            meilleur[0] = objectif
+            routes = []
+            for v in range(routing.vehicles()):
+                index = routing.Start(v)
+                route = []
+                while not routing.IsEnd(index):
+                    route.append(index)
+                    index = routing.NextVar(index).Value()
+                routes.append(route)
+            snapshots.append((round((time.monotonic() - started) * 1000), objectif, routes))
+
+        manager, routing, solution = solve_vrp(data, on_solution=observer)
+        elapsed = time.monotonic() - started
+        if solution is None:
+            raise NoSolutionError(
+                f"Aucune solution trouvée en {settings['budget_seconds']} s "
+                f"pour {settings['customers']} clients et {settings['vehicles']} véhicules"
             )
 
-        source = {
-            'results': results,
-            'locations': data['locations'],
-            'time_windows': data['time_windows'],
-            'demands': data['demands'],
-            # Capacité nulle pour les véhicules fictifs : c'est la convention de
-            # la charge utile historique, conservée pour qu'un même document soit
-            # lisible par les deux producteurs.
-            'vehicle_capacities': list(data['vehicle_capacities']) + [0] * (data['num_vehicles'] - num_real),
-            'num_vehicles': data['num_vehicles'],
-            'num_real_vehicles': num_real,
-            'depot': data['depot'],
-            'num_customers': data['num_customers'],
-            'num_hubs': data['num_hubs'],
-            'hub_deposits': data.get('hub_deposits', []),
-            'hub_pickups': data.get('hub_pickups', []),
-            'unload_depots': data.get('unload_depots', []),
-            'time_per_demand_unit': data['time_per_demand_unit'],
-            'road_legs': road_legs,
-        }
-        source = convert_to_json_serializable(source)
-
-        # Texte de provenance en anglais : il part tel quel dans la charge utile
-        # affichée par le site, dont l'interface est anglophone.
-        meta = {
-            'source': 'https://github.com/Skeeder1/livraison',
-            'solver': f'Google OR-Tools {_ortools_version()}, RoutingModel (CVRPTW)',
-            'generatedFrom': 'optimizer.scenario.solve_scenario',
-            'seed': settings['seed'],
-            'note': (
-                'Solved on demand: one OR-Tools run under a fixed time budget. '
-                'The hub strategy is not arbitrated and no baseline is computed.'
-            ),
-            'budgetSeconds': settings['budget_seconds'],
-            'solveSeconds': round(elapsed, 2),
-        }
-
-        return build_tour(source, meta)
+        curve = [[t, o] for t, o, _ in snapshots]
+        tours: dict[int, dict[str, Any] | None] = {}
+        for budget in budgets:
+            limite = budget * 1000
+            retenus = [s for s in snapshots if s[0] <= limite]
+            if not retenus:
+                tours[budget] = None
+                continue
+            _, _, routes = retenus[-1]
+            if budget == max(budgets):
+                affectation = solution  # la solution finale, telle quelle
+            else:
+                # Sans le nœud de départ : `ReadAssignmentFromRoutes` attend les
+                # nœuds visités, et rétablit lui-même départ et arrivée.
+                noeuds = [[manager.IndexToNode(i) for i in r[1:]] for r in routes]
+                affectation = routing.ReadAssignmentFromRoutes(noeuds, True)
+                if affectation is None:
+                    tours[budget] = None
+                    continue
+            tours[budget] = _document(
+                data, manager, routing, affectation,
+                settings={**settings, 'budget_seconds': budget},
+                elapsed=elapsed, fetch_roads=False,
+            )
+        return tours, curve
     finally:
         Config.update(**saved)
