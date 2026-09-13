@@ -1089,3 +1089,16 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* "Auto · 30 s" must never break across lines: split in three, it reads as
+   noise, and a button that changes height as the slider moves would jostle
+   the whole row. The wrapper takes the width the label needs and the four
+   short fixed durations give way, which they can afford to — their labels
+   are three characters. */
+.dr-seg .dr-segbtn { white-space: nowrap; }
+.dr-segwrap { flex: 0 0 auto; }
+@media (max-width: 480px) {
+  .dr-seg { flex-wrap: nowrap; gap: 1px; }
+  .dr-seg .dr-segbtn { padding-inline: 0.28rem; font-size: 0.66rem; }
+  .dr-segwrap .dr-segbtn { padding-right: 1rem; }
+}

@@ -41,6 +41,7 @@ export interface DemoStrings {
     seconds: string;
     minutes: string;
     auto: string;
+    autoWithTime: string;
     rerun: string;
     show: string;
     modeReady: string;
@@ -155,6 +156,7 @@ const en: DemoStrings = {
     seconds: '{n} s',
     minutes: '{n} min',
     auto: 'Auto',
+    autoWithTime: 'Auto · {n} s',
     rerun: 'Recalculate the result',
     show: 'Show result',
     modeReady: 'Already calculated',
@@ -286,6 +288,7 @@ const fr: DemoStrings = {
     seconds: '{n} s',
     minutes: '{n} min',
     auto: 'Auto',
+    autoWithTime: 'Auto · {n} s',
     rerun: 'Recalculer le résultat',
     show: 'Afficher le résultat',
     modeReady: 'Déjà calculée',

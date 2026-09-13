@@ -1858,12 +1858,17 @@ export default function DeliveryReplay({
                         }))
                       }
                     >
-                      {/* The label stays put. Showing the resolved seconds here
-                          would put a second "30 s" in a row that already has
-                          one, and the two would mean different things: one is a
-                          duration you picked, the other a duration that was
-                          derived for you. The note below carries the number. */}
-                      {strings.solve.auto}
+                      {/* The time this configuration takes, on the control
+                          itself, so the visitor never has to look for it. The
+                          "Auto" prefix is what keeps it from reading as a fifth
+                          fixed duration: "Auto · 30 s" is a derived value, "30 s"
+                          next to it is a chosen one. It follows the customer
+                          slider whether or not Auto is selected, so the visitor
+                          sees what Auto would ask for before picking it. */}
+                      {strings.solve.autoWithTime.replace(
+                        '{n}',
+                        String(budgetForInstance(params.customers)),
+                      )}
                     </button>
                     <button
                       type="button"
