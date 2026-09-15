@@ -477,15 +477,18 @@ def solve_scenario_at_budgets(
             limite = budget * 1000
             retenus = [s for s in snapshots if s[0] <= limite]
             if budget == max(budgets):
-                # La solution finale est, par définition, la tournée au plafond
-                # — même quand le rappel n'a rien relevé avant lui : sur une
-                # instance où la première solution demande presque tout le
-                # budget, le solveur la rend quand même, sans passer par le
-                # rappel. La courbe reçoit alors ce seul point, à la fin.
+                # La solution finale est, par définition, la tournée au plafond,
+                # et son objectif est celui du DERNIER instantané, quelle que
+                # soit sa date : le solveur vérifie sa limite entre deux
+                # voisins, donc la dernière amélioration peut être relevée
+                # quelques millisecondes après le plafond. Quand le rappel n'a
+                # rien relevé du tout (une première solution qui demande
+                # presque tout le budget), la courbe reçoit ce seul point.
                 affectation = solution
-                if not retenus:
+                if not snapshots:
                     curve.append([round(elapsed * 1000), solution.ObjectiveValue()])
-                    retenus = [(curve[-1][0], curve[-1][1], None)]
+                    snapshots.append((curve[-1][0], curve[-1][1], None))
+                retenus = snapshots
             elif not retenus:
                 tours[budget] = None
                 continue
