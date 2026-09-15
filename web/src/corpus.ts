@@ -68,7 +68,9 @@ export function assembleTour(file: CorpusFile, budget: number, pack: GeometryPac
     legs: v.legs.map((leg, i): Leg => {
       const pts = pack.legs[leg.key];
       const { key, ...legRest } = leg;
-      if (pts && pts.length >= 2) return { ...legRest, pts };
+      // The stored leg was written before any polyline existed, so its own
+      // `road` flag is always false; the pack is what makes it a road leg.
+      if (pts && pts.length >= 2) return { ...legRest, road: true, pts };
       // Not in the pack: a straight line, and honest about it — the same
       // degradation the live path uses for a leg the router could not snap.
       const a = v.stops[i], b = v.stops[i + 1];
