@@ -21,6 +21,7 @@ une seule résolution, aucune distance de référence, aucun rendu.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -355,7 +356,7 @@ def _document(data, manager, routing, assignment, *, settings, elapsed, fetch_ro
     return build_tour(source, meta)
 
 
-def _reconstruire(routing, noeuds):
+def _reconstruire(routing, noeuds, limite_s: int = 10):
     """
     Reconstruit une affectation complète depuis l'ordre des tournées.
 
@@ -376,7 +377,7 @@ def _reconstruire(routing, noeuds):
     if not routing.RoutesToAssignment(noeuds, True, True, affectation):
         return None
     parametres = pywrapcp.DefaultRoutingSearchParameters()
-    parametres.time_limit.FromSeconds(10)
+    parametres.time_limit.FromSeconds(limite_s)
     parametres.solution_limit = 1
     parametres.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC
@@ -390,6 +391,7 @@ def solve_scenario_at_budgets(
     workdir: Path,
     budgets: tuple[int, ...] = (5, 15, 30, 60),
     road_matrix: bool = True,
+    on_failure: Callable[[int, str], None] | None = None,
 ) -> tuple[dict[int, dict[str, Any] | None], list[list[int]]]:
     """
     Une recherche, plusieurs budgets : la tournée à chaque budget demandé.
@@ -469,29 +471,49 @@ def solve_scenario_at_budgets(
             )
 
         curve = [[t, o] for t, o, _ in snapshots]
+        signaler = on_failure or (lambda _budget, _raison: None)
         tours: dict[int, dict[str, Any] | None] = {}
         for budget in budgets:
             limite = budget * 1000
             retenus = [s for s in snapshots if s[0] <= limite]
-            if not retenus:
+            if budget == max(budgets):
+                # La solution finale est, par définition, la tournée au plafond
+                # — même quand le rappel n'a rien relevé avant lui : sur une
+                # instance où la première solution demande presque tout le
+                # budget, le solveur la rend quand même, sans passer par le
+                # rappel. La courbe reçoit alors ce seul point, à la fin.
+                affectation = solution
+                if not retenus:
+                    curve.append([round(elapsed * 1000), solution.ObjectiveValue()])
+                    retenus = [(curve[-1][0], curve[-1][1], None)]
+            elif not retenus:
                 tours[budget] = None
                 continue
-            _, _, routes = retenus[-1]
-            if budget == max(budgets):
-                affectation = solution  # la solution finale, telle quelle
             else:
                 # Sans le nœud de départ : `RoutesToAssignment` attend les nœuds
-                # visités et rétablit lui-même départ et arrivée.
+                # visités et rétablit lui-même départ et arrivée. Une première
+                # reconstruction qui échoue en dix secondes en a droit à une
+                # seconde, plus longue, avant d'être déclarée manquante.
+                _, _, routes = retenus[-1]
                 noeuds = [[manager.IndexToNode(i) for i in r[1:]] for r in routes]
-                affectation = _reconstruire(routing, noeuds)
+                affectation = _reconstruire(routing, noeuds) or _reconstruire(routing, noeuds, 30)
                 if affectation is None:
+                    signaler(budget, 'reconstruction impossible')
                     tours[budget] = None
                     continue
-            tours[budget] = _document(
+            document = _document(
                 data, manager, routing, affectation,
                 settings={**settings, 'budget_seconds': budget},
                 elapsed=elapsed, fetch_roads=False,
             )
+            # La preuve d'exactitude : la tournée reconstruite vaut l'objectif
+            # que la courbe annonce à cet instant. Sinon, mieux vaut un trou
+            # qu'une tournée qui ne serait pas celle du budget.
+            if document['meta'].get('objective') != retenus[-1][1]:
+                signaler(budget, f"objectif {document['meta'].get('objective')} ≠ courbe {retenus[-1][1]}")
+                tours[budget] = None
+                continue
+            tours[budget] = document
         return tours, curve
     finally:
         Config.update(**saved)
