@@ -149,7 +149,7 @@ const en: DemoStrings = {
     minutes: '{n} min',
     rerun: 'Recalculate the result',
     show: 'Show result',
-    modeReady: 'Already calculated at every search time',
+    modeReady: 'Already calculated at this search time',
     modeReadyHint:
       'Stored for 5 s, 15 s, 30 s and 1 min: change the search time and the route changes at once. Recalculating runs the solver live.',
     modeAbsent: 'Not stored yet. The solver will run, about {n} s.',
@@ -272,7 +272,7 @@ const fr: DemoStrings = {
     minutes: '{n} min',
     rerun: 'Recalculer le résultat',
     show: 'Afficher le résultat',
-    modeReady: 'Déjà calculée à chaque durée',
+    modeReady: 'Déjà calculée à cette durée',
     modeReadyHint:
       'Enregistrée pour 5 s, 15 s, 30 s et 1 min : changer la durée de recherche change le trajet aussitôt. Recalculer relance le solveur en direct.',
     modeAbsent: 'Pas encore enregistrée. Le solveur tournera, environ {n} s.',

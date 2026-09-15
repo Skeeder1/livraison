@@ -74,9 +74,13 @@ def test_la_courbe_est_strictement_decroissante(quatre):
 
 
 def test_la_qualite_ne_regresse_pas_avec_le_budget(quatre):
+    """`roadKm` n'est pas monotone dans l'objectif (deux tournées de même
+    objectif peuvent avoir des trajets de longueurs différentes) : c'est
+    l'objectif, celui que le solveur minimise, qui ne doit jamais remonter
+    quand le budget augmente."""
     tours, _ = quatre
-    km = [tours[b]["stats"]["roadKm"] for b in (2, 4, 8) if tours[b]]
-    assert km == sorted(km, reverse=True)
+    objectifs = [tours[b]["meta"]["objective"] for b in (2, 4, 8) if tours[b]]
+    assert objectifs == sorted(objectifs, reverse=True)
 
 
 def test_chaque_budget_porte_son_propre_meta(quatre):

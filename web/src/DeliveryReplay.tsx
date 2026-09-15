@@ -250,7 +250,11 @@ function referenceParams(reference: Tour): SolveParams {
   return {
     customers: reference.stats.customers,
     vehicles: reference.stats.vehicles,
-    hubs: reference.stats.hubsAvailable,
+    // Always 0, not `reference.stats.hubsAvailable`: the spec's reference
+    // configuration is `c45-v3-h0-k10-tw0`. This makes an untouched panel
+    // (DEFAULT_PARAMS, hubs 0) compare a configuration with itself → zero
+    // deltas, instead of drifting against the frozen tour's h2 corpus key.
+    hubs: 0,
     capacity: reference.stats.capacity,
     timeWindows: reference.stats.timeWindowsBinding,
     budgetSeconds: DEFAULT_PARAMS.budgetSeconds,
@@ -1401,11 +1405,15 @@ export default function DeliveryReplay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.budgetSeconds]);
 
+  // Compare at the budget of the tour ON SCREEN (`applied`), not the panel's
+  // current budget: a panel change with no click yet must not move the delta
+  // card while the map stays put. Falls back to `params.budgetSeconds` before
+  // anything has been applied.
+  const referenceBudget = applied?.budgetSeconds ?? params.budgetSeconds;
   const referenceAt = useMemo(
     () =>
-      (referenceCorpus && assembleTour(referenceCorpus.file, params.budgetSeconds, referenceCorpus.pack)) ??
-      reference,
-    [referenceCorpus, params.budgetSeconds, reference]
+      (referenceCorpus && assembleTour(referenceCorpus.file, referenceBudget, referenceCorpus.pack)) ?? reference,
+    [referenceCorpus, referenceBudget, reference]
   );
 
   const cancelSolve = useCallback(() => abortRef.current?.abort(), []);
@@ -1938,7 +1946,7 @@ export default function DeliveryReplay({
               type="button"
               className="dr-btn dr-btn--primary"
               onClick={() => runSolve()}
-              disabled={solving || blocked}
+              disabled={solving || blocked || mode === 'checking'}
             >
               {mode === 'ready' ? (
                 <Zap size={15} aria-hidden="true" />
