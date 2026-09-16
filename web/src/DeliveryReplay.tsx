@@ -1931,7 +1931,6 @@ export default function DeliveryReplay({
               <>
                 <Zap size={13} aria-hidden="true" />
                 <b>{strings.solve.modeReady}</b>
-                <span>{strings.solve.modeReadyHint}</span>
               </>
             ) : (
               <>

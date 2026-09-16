@@ -43,7 +43,6 @@ export interface DemoStrings {
     rerun: string;
     show: string;
     modeReady: string;
-    modeReadyHint: string;
     modeAbsent: string;
     rerunHint: string;
     fromBaked: string;
@@ -150,8 +149,6 @@ const en: DemoStrings = {
     rerun: 'Recalculate the result',
     show: 'Show result',
     modeReady: 'Already calculated at this search time',
-    modeReadyHint:
-      'Stored for 5 s, 15 s, 30 s and 1 min: change the search time and the route changes at once. Recalculating runs the solver live.',
     modeAbsent: 'Not stored yet. The solver will run, about {n} s.',
     rerunHint: 'Run the solver again on these settings.',
     fromBaked: 'Previously computed result. No new search was needed.',
@@ -273,8 +270,6 @@ const fr: DemoStrings = {
     rerun: 'Recalculer le résultat',
     show: 'Afficher le résultat',
     modeReady: 'Déjà calculée à cette durée',
-    modeReadyHint:
-      'Enregistrée pour 5 s, 15 s, 30 s et 1 min : changer la durée de recherche change le trajet aussitôt. Recalculer relance le solveur en direct.',
     modeAbsent: 'Pas encore enregistrée. Le solveur tournera, environ {n} s.',
     rerunHint: 'Relancer le solveur sur ces réglages.',
     fromBaked: 'Résultat déjà calculé. Aucune nouvelle recherche nécessaire.',
